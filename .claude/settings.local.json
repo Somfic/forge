@@ -13,7 +13,9 @@
       "Bash(cargo check:*)",
       "Bash(cargo run:*)",
       "Bash(grep -v \"^warning\\\\|^  -->\\\\|^   |\\\\|^   =\\\\|^$\\\\|Compiling\\\\|Finished\\\\|Running\\\\|warning:\")",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "WebFetch(domain:svelte.dev)",
+      "WebFetch(domain:kitql.dev)"
     ]
   }
 }

@@ -1,10 +1,11 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{Json, Router, routing::get};
 use tokio::signal;
+use tower_http::services::ServeDir;
 use tracing::{Instrument, error, info, info_span, warn};
 
-use crate::{AppContext, Config, HealthStatus, Module, Result};
+use crate::{AppContext, Config, HealthCheck, HealthStatus, LiveCheck, Module, NavEntry, Result};
 
 pub struct Platform {
     config: Arc<Config>,
@@ -18,124 +19,169 @@ impl Platform {
             modules,
         }
     }
-}
 
-impl Platform {
-    pub async fn run(self) -> crate::Result<()> {
-        info!("initializing event bus");
+    pub async fn run(self) -> Result<()> {
         let event_bus = crate::events::create_event_bus(&self.config);
-        info!("initializing http client");
         let http = crate::http::create_client(&self.config)?;
 
-        let mut nav_entries = Vec::new();
-        let mut health_checks = Vec::new();
         let mut router = Router::new();
+        let mut nav_entries = Vec::new();
+        let mut health_checks: Vec<Box<dyn LiveCheck>> = Vec::new();
 
         for module in &self.modules {
             let span = info_span!("module", module = module.name());
+            let result = init_module(module.as_ref(), &self.config, &event_bus, &http, router)
+                .instrument(span)
+                .await?;
 
-            let (module_router, entry, check, report) = async {
-                info!("booting");
+            router = result.router;
 
-                info!("connecting database");
-                let pool = crate::db::create_module_pool(&self.config, module.as_ref()).await?;
-                info!("database ready");
-
-                let storage = crate::fs::create_storage(&self.config, module.as_ref()).await?;
-
-                let ctx = AppContext {
-                    db: pool,
-                    storage,
-                    config: self.config.clone(),
-                    events: event_bus.clone(),
-                    http: http.clone(),
-                };
-
-                let entry = module.nav_entry();
-                if let Some(ref e) = entry {
-                    info!("registering nav entry {}", e.label);
-                }
-
-                let check = module.live_status();
-                let report = module.health_check(ctx.clone()).await?;
-
-                if !report.is_empty() {
-                    info!("health checks:");
-                }
-
-                for c in &report {
-                    match c.status {
-                        HealthStatus::Ok => {
-                            info!("  ✓ {}: {}", c.name, c.message.as_deref().unwrap_or("ok"))
-                        }
-                        HealthStatus::Missing => warn!(
-                            "  ✗ {} missing: {}",
-                            c.name,
-                            c.message.as_deref().unwrap_or("")
-                        ),
-                        HealthStatus::Error => error!(
-                            "  ✗ {} error: {}",
-                            c.name,
-                            c.message.as_deref().unwrap_or("")
-                        ),
-                    }
-                }
-
-                let module_routes = module.routes().with_state(ctx.clone());
-
-                info!("starting");
-                module.on_start(ctx).await?;
-                info!("ready");
-
-                crate::Result::Ok((module_routes, entry, check, report))
-            }
-            .instrument(span)
-            .await?;
-
-            router = router.nest(&format!("/{}", module.name()).to_lowercase(), module_router);
-
-            if let Some(entry) = entry {
+            if let Some(entry) = result.nav_entry {
                 nav_entries.push(entry);
             }
-
-            if let Some(check) = check {
+            if let Some(check) = result.live_check {
                 health_checks.push(check);
             }
         }
 
-        nav_entries.sort_by_key(|e| e.order);
-        let nav_entries = Arc::new(nav_entries);
-        let health_checks = Arc::new(health_checks);
-
-        let core_router = Router::new()
-            .route(
-                "/api/nav",
-                get(move || async move { Json((*nav_entries).clone()) }),
-            )
-            .route(
-                "/api/health",
-                get({
-                    move || async move {
-                        let mut results = vec![];
-                        for check in health_checks.iter() {
-                            results.push(check.check().await);
-                        }
-                        Json(results)
-                    }
-                }),
-            );
-
-        let app = router.merge(core_router);
+        {
+            let span = info_span!("module", module = "Dashboard");
+            let _enter = span.enter();
+            router = router.merge(core_routes(nav_entries, health_checks));
+            router = mount_dashboard(router);
+        }
 
         let addr: SocketAddr = format!("{}:{}", self.config.host, self.config.port).parse()?;
         let listener = tokio::net::TcpListener::bind(addr).await?;
         info!("listening on http://{addr}");
-        axum::serve(listener, app)
+        axum::serve(listener, router)
             .with_graceful_shutdown(shutdown_signal())
             .await?;
 
         Ok(())
     }
+}
+
+struct InitResult {
+    router: Router,
+    nav_entry: Option<NavEntry>,
+    live_check: Option<Box<dyn LiveCheck>>,
+}
+
+async fn init_module(
+    module: &dyn Module,
+    config: &Arc<Config>,
+    event_bus: &crate::EventBus,
+    http: &crate::HttpClient,
+    mut router: Router,
+) -> Result<InitResult> {
+    let pool = crate::db::create_module_pool(config, module).await?;
+
+    let storage = crate::fs::create_storage(config, module).await?;
+
+    let ctx = AppContext {
+        db: pool,
+        storage,
+        config: config.clone(),
+        events: event_bus.clone(),
+        http: http.clone(),
+    };
+
+    let nav_entry = module.nav_entry();
+    if let Some(ref e) = nav_entry {
+        info!("registering nav entry {}", e.label);
+    }
+
+    let live_check = module.live_status();
+
+    log_health_checks(&module.health_check(ctx.clone()).await?);
+
+    // Static frontend
+    let build_dir = PathBuf::from(format!(
+        "modules/{}/frontend/build",
+        module.name().to_lowercase()
+    ));
+    if build_dir.exists() {
+        let prefix = format!("/{}", module.name()).to_lowercase();
+        info!("mounting ui at {prefix}");
+        let fallback = tower_http::services::ServeFile::new(build_dir.join("index.html"));
+        let service = ServeDir::new(&build_dir)
+            .append_index_html_on_directories(true)
+            .fallback(fallback);
+        router = router.nest_service(&prefix, service);
+    }
+
+    // API routes
+    let api_prefix = format!("/{}/api", module.name()).to_lowercase();
+    info!("mounting api at {api_prefix}");
+    router = router.nest(&api_prefix, module.routes().with_state(ctx.clone()));
+
+    module.on_start(ctx).await?;
+
+    Ok(InitResult {
+        router,
+        nav_entry,
+        live_check,
+    })
+}
+
+fn log_health_checks(checks: &[HealthCheck]) {
+    if checks.is_empty() {
+        return;
+    }
+
+    info!("health checks:");
+    for c in checks {
+        match c.status {
+            HealthStatus::Ok => {
+                info!("  ✓ {}: {}", c.name, c.message.as_deref().unwrap_or("ok"))
+            }
+            HealthStatus::Missing => warn!(
+                "  ✗ {} missing: {}",
+                c.name,
+                c.message.as_deref().unwrap_or("")
+            ),
+            HealthStatus::Error => error!(
+                "  ✗ {} error: {}",
+                c.name,
+                c.message.as_deref().unwrap_or("")
+            ),
+        }
+    }
+}
+
+fn core_routes(nav_entries: Vec<NavEntry>, health_checks: Vec<Box<dyn LiveCheck>>) -> Router {
+    let nav_entries = Arc::new(nav_entries);
+    let health_checks = Arc::new(health_checks);
+
+    let prefix = "/api";
+    info!("mounting api at {prefix}");
+
+    Router::new()
+        .route(
+            format!("{}/nav", prefix).as_str(),
+            get(move || async move { Json((*nav_entries).clone()) }),
+        )
+        .route(
+            format!("{}/health", prefix).as_str(),
+            get(move || async move {
+                let mut results = vec![];
+                for check in health_checks.iter() {
+                    results.push(check.check().await);
+                }
+                Json(results)
+            }),
+        )
+}
+
+fn mount_dashboard(mut router: Router) -> Router {
+    let dashboard_dir = PathBuf::from("frontend/apps/dashboard/build");
+    if dashboard_dir.exists() {
+        info!("mounting ui at /");
+        router = router
+            .fallback_service(ServeDir::new(&dashboard_dir).append_index_html_on_directories(true));
+    }
+    router
 }
 
 async fn shutdown_signal() {

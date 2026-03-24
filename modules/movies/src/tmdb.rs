@@ -2,51 +2,67 @@ use crate::config::MoviesConfig;
 use forge::{HttpClient, json};
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
-pub struct TmdbMovie {
+// --- Unified types (what we expose) ---
+
+#[derive(Serialize, Clone)]
+pub struct MediaItem {
     pub id: i64,
+    pub media_type: MediaType,
     pub title: String,
     pub overview: Option<String>,
     pub tagline: Option<String>,
     pub release_date: Option<String>,
     pub runtime: Option<i64>,
-    pub vote_average: Option<f64>,
+    pub rating: Option<f64>,
     pub poster_path: Option<String>,
     pub backdrop_path: Option<String>,
-    pub genres: Vec<TmdbGenre>,
-    pub videos: Option<TmdbVideos>,
-    pub images: Option<TmdbImages>,
+    pub genres: Vec<Genre>,
+    pub videos: Vec<Video>,
+    pub images: Option<Images>,
+    pub seasons: Option<Vec<Season>>,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct TmdbGenre {
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaType {
+    Movie,
+    Tv,
+}
+
+#[derive(Serialize, Clone)]
+pub struct SearchResult {
+    pub id: i64,
+    pub media_type: MediaType,
+    pub title: String,
+    pub overview: Option<String>,
+    pub release_date: Option<String>,
+    pub poster_path: Option<String>,
+    pub backdrop_path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Genre {
     pub id: i64,
     pub name: String,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct TmdbVideos {
-    pub results: Vec<TmdbVideo>,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct TmdbVideo {
+#[derive(Serialize, Clone)]
+pub struct Video {
     pub key: String,
     pub site: String,
     pub name: String,
-    #[serde(rename = "type")]
     pub video_type: String,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct TmdbImages {
-    pub posters: Vec<TmdbImage>,
-    pub backdrops: Vec<TmdbImage>,
-    pub logos: Vec<TmdbImage>,
+#[derive(Serialize, Clone)]
+pub struct Images {
+    pub posters: Vec<Image>,
+    pub backdrops: Vec<Image>,
+    pub logos: Vec<Image>,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct TmdbImage {
+#[derive(Serialize, Clone)]
+pub struct Image {
     pub file_path: String,
     pub width: i64,
     pub height: i64,
@@ -54,20 +70,221 @@ pub struct TmdbImage {
     pub vote_average: f64,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct TmdbSearchResults {
-    pub results: Vec<TmdbSearchResult>,
+#[derive(Serialize, Clone)]
+pub struct Season {
+    pub id: i64,
+    pub season_number: i64,
+    pub name: String,
+    pub episode_count: i64,
+    pub poster_path: Option<String>,
+    pub air_date: Option<String>,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct TmdbSearchResult {
-    pub id: i64,
-    pub title: String,
-    pub overview: Option<String>,
-    pub release_date: Option<String>,
-    pub poster_path: Option<String>,
-    pub backdrop_path: Option<String>,
+// --- Raw TMDB response types (private) ---
+
+#[derive(Deserialize)]
+struct TmdbMultiSearchResults {
+    results: Vec<TmdbMultiSearchResult>,
 }
+
+#[derive(Deserialize)]
+struct TmdbMultiSearchResult {
+    id: i64,
+    media_type: String,
+    // movie fields
+    title: Option<String>,
+    release_date: Option<String>,
+    // tv fields
+    name: Option<String>,
+    first_air_date: Option<String>,
+    // shared
+    overview: Option<String>,
+    poster_path: Option<String>,
+    backdrop_path: Option<String>,
+}
+
+impl TmdbMultiSearchResult {
+    fn into_search_result(self) -> Option<SearchResult> {
+        let media_type = match self.media_type.as_str() {
+            "movie" => MediaType::Movie,
+            "tv" => MediaType::Tv,
+            _ => return None,
+        };
+        Some(SearchResult {
+            id: self.id,
+            media_type,
+            title: self.title.or(self.name).unwrap_or_default(),
+            overview: self.overview,
+            release_date: self.release_date.or(self.first_air_date),
+            poster_path: self.poster_path,
+            backdrop_path: self.backdrop_path,
+        })
+    }
+}
+
+#[derive(Deserialize)]
+struct TmdbMovie {
+    id: i64,
+    title: String,
+    overview: Option<String>,
+    tagline: Option<String>,
+    release_date: Option<String>,
+    runtime: Option<i64>,
+    vote_average: Option<f64>,
+    poster_path: Option<String>,
+    backdrop_path: Option<String>,
+    genres: Vec<Genre>,
+    videos: Option<TmdbVideos>,
+    images: Option<TmdbImages>,
+}
+
+#[derive(Deserialize)]
+struct TmdbTv {
+    id: i64,
+    name: String,
+    overview: Option<String>,
+    tagline: Option<String>,
+    first_air_date: Option<String>,
+    episode_run_time: Option<Vec<i64>>,
+    vote_average: Option<f64>,
+    poster_path: Option<String>,
+    backdrop_path: Option<String>,
+    genres: Vec<Genre>,
+    videos: Option<TmdbVideos>,
+    images: Option<TmdbImages>,
+    seasons: Option<Vec<TmdbSeason>>,
+}
+
+#[derive(Deserialize)]
+struct TmdbSeason {
+    id: i64,
+    season_number: i64,
+    name: String,
+    episode_count: i64,
+    poster_path: Option<String>,
+    air_date: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct TmdbVideos {
+    results: Vec<TmdbVideo>,
+}
+
+#[derive(Deserialize)]
+struct TmdbVideo {
+    key: String,
+    site: String,
+    name: String,
+    #[serde(rename = "type")]
+    video_type: String,
+}
+
+#[derive(Deserialize)]
+struct TmdbImages {
+    posters: Vec<TmdbImage>,
+    backdrops: Vec<TmdbImage>,
+    logos: Vec<TmdbImage>,
+}
+
+#[derive(Deserialize)]
+struct TmdbImage {
+    file_path: String,
+    width: i64,
+    height: i64,
+    iso_639_1: Option<String>,
+    vote_average: f64,
+}
+
+// --- Conversions ---
+
+fn convert_videos(videos: Option<TmdbVideos>) -> Vec<Video> {
+    videos
+        .map(|v| {
+            v.results
+                .into_iter()
+                .map(|v| Video {
+                    key: v.key,
+                    site: v.site,
+                    name: v.name,
+                    video_type: v.video_type,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn convert_images(images: Option<TmdbImages>) -> Option<Images> {
+    images.map(|i| Images {
+        posters: i.posters.into_iter().map(convert_image).collect(),
+        backdrops: i.backdrops.into_iter().map(convert_image).collect(),
+        logos: i.logos.into_iter().map(convert_image).collect(),
+    })
+}
+
+fn convert_image(i: TmdbImage) -> Image {
+    Image {
+        file_path: i.file_path,
+        width: i.width,
+        height: i.height,
+        iso_639_1: i.iso_639_1,
+        vote_average: i.vote_average,
+    }
+}
+
+impl From<TmdbMovie> for MediaItem {
+    fn from(m: TmdbMovie) -> Self {
+        MediaItem {
+            id: m.id,
+            media_type: MediaType::Movie,
+            title: m.title,
+            overview: m.overview,
+            tagline: m.tagline,
+            release_date: m.release_date,
+            runtime: m.runtime,
+            rating: m.vote_average,
+            poster_path: m.poster_path,
+            backdrop_path: m.backdrop_path,
+            genres: m.genres,
+            videos: convert_videos(m.videos),
+            images: convert_images(m.images),
+            seasons: None,
+        }
+    }
+}
+
+impl From<TmdbTv> for MediaItem {
+    fn from(t: TmdbTv) -> Self {
+        MediaItem {
+            id: t.id,
+            media_type: MediaType::Tv,
+            title: t.name,
+            overview: t.overview,
+            tagline: t.tagline,
+            release_date: t.first_air_date,
+            runtime: t.episode_run_time.and_then(|r| r.first().copied()),
+            rating: t.vote_average,
+            poster_path: t.poster_path,
+            backdrop_path: t.backdrop_path,
+            genres: t.genres,
+            videos: convert_videos(t.videos),
+            images: convert_images(t.images),
+            seasons: t.seasons.map(|s| {
+                s.into_iter()
+                    .map(|s| Season {
+                        id: s.id,
+                        season_number: s.season_number,
+                        name: s.name,
+                        episode_count: s.episode_count,
+                        poster_path: s.poster_path,
+                        air_date: s.air_date,
+                    })
+                    .collect()
+            }),
+        }
+    }
+}
+
+// --- Client ---
 
 pub struct TmdbClient {
     api_key: String,
@@ -96,26 +313,40 @@ impl TmdbClient {
         }
     }
 
-    pub async fn search_movies(&self, query: &str) -> forge::Result<TmdbSearchResults> {
+    /// Search for both movies and TV shows
+    pub async fn search(&self, query: &str) -> forge::Result<Vec<SearchResult>> {
         let url = format!(
-            "https://api.themoviedb.org/3/search/movie?api_key={}&query={}",
+            "https://api.themoviedb.org/3/search/multi?api_key={}&query={}",
             self.api_key,
             urlencoding::encode(query)
         );
         let res = self.client.get(&url).send().await?.error_for_status()?;
         let body = res.text().await?;
-        let data: TmdbSearchResults = json::from_str::<TmdbSearchResults>(&body)?;
-        Ok(data)
+        let data: TmdbMultiSearchResults = json::from_str(&body)?;
+        Ok(data
+            .results
+            .into_iter()
+            .filter_map(|r| r.into_search_result())
+            .collect())
     }
 
-    pub async fn get_movie_details(&self, movie_id: i64) -> forge::Result<TmdbMovie> {
+    /// Get details for a movie or TV show
+    pub async fn details(&self, media_type: MediaType, id: i64) -> forge::Result<MediaItem> {
+        let type_str = match media_type {
+            MediaType::Movie => "movie",
+            MediaType::Tv => "tv",
+        };
         let url = format!(
-            "https://api.themoviedb.org/3/movie/{}?api_key={}&append_to_response=videos,images",
-            movie_id, self.api_key
+            "https://api.themoviedb.org/3/{}/{}?api_key={}&append_to_response=videos,images",
+            type_str, id, self.api_key
         );
         let res = self.client.get(&url).send().await?.error_for_status()?;
         let body = res.text().await?;
-        let data = json::from_str::<TmdbMovie>(&body)?;
-        Ok(data)
+
+        let item = match media_type {
+            MediaType::Movie => json::from_str::<TmdbMovie>(&body)?.into(),
+            MediaType::Tv => json::from_str::<TmdbTv>(&body)?.into(),
+        };
+        Ok(item)
     }
 }

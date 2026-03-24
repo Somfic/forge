@@ -1,4 +1,5 @@
 use sqlx::sqlite::SqlitePoolOptions;
+use tracing::info;
 
 use crate::{Config, Error, Module, Result};
 
@@ -20,6 +21,7 @@ pub(crate) async fn create_module_pool(config: &Config, module: &dyn Module) -> 
         .await?;
 
     let migrator = module.migrations();
+
     migrator.run(&pool).await?;
 
     Ok(pool)

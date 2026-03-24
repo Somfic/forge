@@ -18,7 +18,9 @@ const MODULE_COLORS: &[Color] = &[
 ];
 
 fn module_color(name: &str) -> Color {
-    let hash = name.bytes().fold(0usize, |acc, b| acc.wrapping_add(b as usize));
+    let hash = name
+        .bytes()
+        .fold(0usize, |acc, b| acc.wrapping_add(b as usize));
     MODULE_COLORS[hash % MODULE_COLORS.len()]
 }
 

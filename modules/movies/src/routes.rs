@@ -8,12 +8,13 @@ use serde::Deserialize;
 use forge::AppContext;
 
 use crate::config::MoviesConfig;
-use crate::tmdb::{TmdbClient, TmdbMovie, TmdbSearchResult};
+use crate::tmdb::{MediaItem, MediaType, SearchResult, TmdbClient};
 
 pub fn router() -> Router<AppContext> {
     Router::new()
         .route("/search", get(search))
-        .route("/details/{id}", get(details))
+        .route("/movie/{id}", get(movie_details))
+        .route("/tv/{id}", get(tv_details))
         .route("/image/{*path}", get(image_proxy))
 }
 
@@ -25,38 +26,50 @@ struct SearchParams {
 async fn search(
     State(ctx): State<AppContext>,
     Query(params): Query<SearchParams>,
-) -> Result<Json<Vec<TmdbSearchResult>>, AppError> {
+) -> Result<Json<Vec<SearchResult>>, AppError> {
     let config = ctx.config.module_config::<MoviesConfig>("movies")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
-    let results = tmdb.search_movies(&params.q).await?;
-    Ok(Json(results.results))
+    let results = tmdb.search(&params.q).await?;
+    Ok(Json(results))
 }
 
-async fn details(
+async fn movie_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
-) -> Result<Json<TmdbMovie>, AppError> {
+) -> Result<Json<MediaItem>, AppError> {
     let config = ctx.config.module_config::<MoviesConfig>("movies")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
-    let movie = tmdb.get_movie_details(id).await?;
-    Ok(Json(movie))
+    let item = tmdb.details(MediaType::Movie, id).await?;
+    Ok(Json(item))
 }
 
-/// Proxies TMDB images.
-/// Usage: /movies/image/w500/kqjL17y...jpg
-/// Sizes: w92, w154, w185, w342, w500, w780, original
+async fn tv_details(
+    State(ctx): State<AppContext>,
+    Path(id): Path<i64>,
+) -> Result<Json<MediaItem>, AppError> {
+    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let tmdb = TmdbClient::new(&config, ctx.http.clone());
+    let item = tmdb.details(MediaType::Tv, id).await?;
+    Ok(Json(item))
+}
+
 async fn image_proxy(
     State(ctx): State<AppContext>,
     Path(path): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    // If path doesn't start with a known size, prepend "original/"
     let path = if path.starts_with("w") || path.starts_with("original") {
         path
     } else {
         format!("original/{path}")
     };
     let url = format!("https://image.tmdb.org/t/p/{path}");
-    let res = ctx.http.get(&url).send().await?.error_for_status().map_err(|e| forge::Error::Generic(e.to_string()))?;
+    let res = ctx
+        .http
+        .get(&url)
+        .send()
+        .await?
+        .error_for_status()
+        .map_err(|e| forge::Error::Generic(e.to_string()))?;
 
     let content_type = res
         .headers()

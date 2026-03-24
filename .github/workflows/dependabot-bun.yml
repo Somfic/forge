@@ -1,0 +1,29 @@
+name: Dependabot Bun Lockfile
+
+on:
+  pull_request:
+    paths:
+      - frontend/**/package.json
+
+permissions:
+  contents: write
+
+jobs:
+  update-lockfile:
+    if: github.actor == 'dependabot[bot]'
+    name: update bun.lock
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - uses: oven-sh/setup-bun@v2
+
+      - run: bun install
+        working-directory: frontend
+
+      - uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🔒 update bun.lock"
+          file_pattern: frontend/bun.lock

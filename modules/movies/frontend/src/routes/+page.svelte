@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { search, imageUrl, type SearchResult } from '$lib/api';
+	import { search, type SearchResult } from '$lib/api.gen';
+	import { imageUrl } from '$lib/utils';
 
 	let query = $state('');
 	let results = $state<SearchResult[]>([]);

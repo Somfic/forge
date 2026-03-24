@@ -5,8 +5,28 @@ use utoipa_axum::router::OpenApiRouter;
 mod config;
 mod routes;
 mod tmdb;
+mod torrentio;
 
 pub struct MoviesModule;
+
+/// Generate the OpenAPI spec as JSON (used by build scripts and tests)
+pub fn openapi_spec() -> utoipa::openapi::OpenApi {
+    let (_, spec) = routes::router().split_for_parts();
+    spec
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_openapi_spec() {
+        let spec = openapi_spec();
+        let json = forge::json::to_string_pretty(&spec).unwrap();
+        std::fs::write("frontend/openapi.json", &json).unwrap();
+        println!("Wrote OpenAPI spec to frontend/openapi.json");
+    }
+}
 
 #[module]
 impl Module for MoviesModule {

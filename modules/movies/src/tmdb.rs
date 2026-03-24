@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 #[derive(Serialize, Clone, ToSchema)]
 pub struct MediaItem {
     pub id: i64,
+    pub imdb_id: Option<String>,
     pub media_type: MediaType,
     pub title: String,
     pub overview: Option<String>,
@@ -124,6 +125,7 @@ impl TmdbMultiSearchResult {
 #[derive(Deserialize)]
 struct TmdbMovie {
     id: i64,
+    imdb_id: Option<String>,
     title: String,
     overview: Option<String>,
     tagline: Option<String>,
@@ -152,6 +154,12 @@ struct TmdbTv {
     videos: Option<TmdbVideos>,
     images: Option<TmdbImages>,
     seasons: Option<Vec<TmdbSeason>>,
+    external_ids: Option<TmdbExternalIds>,
+}
+
+#[derive(Deserialize)]
+struct TmdbExternalIds {
+    imdb_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -234,6 +242,7 @@ impl From<TmdbMovie> for MediaItem {
     fn from(m: TmdbMovie) -> Self {
         MediaItem {
             id: m.id,
+            imdb_id: m.imdb_id,
             media_type: MediaType::Movie,
             title: m.title,
             overview: m.overview,
@@ -255,6 +264,7 @@ impl From<TmdbTv> for MediaItem {
     fn from(t: TmdbTv) -> Self {
         MediaItem {
             id: t.id,
+            imdb_id: t.external_ids.and_then(|e| e.imdb_id),
             media_type: MediaType::Tv,
             title: t.name,
             overview: t.overview,
@@ -334,7 +344,7 @@ impl TmdbClient {
             MediaType::Tv => "tv",
         };
         let url = format!(
-            "https://api.themoviedb.org/3/{}/{}?api_key={}&append_to_response=videos,images",
+            "https://api.themoviedb.org/3/{}/{}?api_key={}&append_to_response=videos,images,external_ids",
             type_str, id, self.api_key
         );
         let res = self.client.get(&url).send().await?.error_for_status()?;

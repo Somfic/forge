@@ -57,6 +57,8 @@ export interface MediaItem {
   genres: Genre[];
   id: number;
   images?: null | Images;
+  /** @nullable */
+  imdb_id?: string | null;
   media_type: MediaType;
   /** @nullable */
   overview?: string | null;
@@ -87,6 +89,17 @@ export interface SearchResult {
   poster_path?: string | null;
   /** @nullable */
   release_date?: string | null;
+  title: string;
+}
+
+export interface StartStreamResponse {
+  url: string;
+}
+
+export interface Stream {
+  file_idx: number;
+  info_hash: string;
+  name: string;
   title: string;
 }
 
@@ -175,6 +188,129 @@ export const search = async (params: SearchParams, options?: RequestInit): Promi
 
   const data: searchResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as searchResponse
+}
+
+
+
+export type movieStreamsResponse200 = {
+  data: Stream[]
+  status: 200
+}
+
+export type movieStreamsResponseSuccess = (movieStreamsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type movieStreamsResponse = (movieStreamsResponseSuccess)
+
+export const getMovieStreamsUrl = (id: number,) => {
+
+
+
+
+  return `/movies/api/streams/movie/${id}`
+}
+
+export const movieStreams = async (id: number, options?: RequestInit): Promise<movieStreamsResponse> => {
+
+  const res = await fetch(getMovieStreamsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: movieStreamsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as movieStreamsResponse
+}
+
+
+
+export type startStreamResponse200 = {
+  data: StartStreamResponse
+  status: 200
+}
+
+export type startStreamResponseSuccess = (startStreamResponse200) & {
+  headers: Headers;
+};
+;
+
+export type startStreamResponse = (startStreamResponseSuccess)
+
+export const getStartStreamUrl = (infoHash: string,
+    fileIdx: number,) => {
+
+
+
+
+  return `/movies/api/streams/start/${infoHash}/${fileIdx}`
+}
+
+export const startStream = async (infoHash: string,
+    fileIdx: number, options?: RequestInit): Promise<startStreamResponse> => {
+
+  const res = await fetch(getStartStreamUrl(infoHash,fileIdx),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: startStreamResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as startStreamResponse
+}
+
+
+
+export type tvStreamsResponse200 = {
+  data: Stream[]
+  status: 200
+}
+
+export type tvStreamsResponseSuccess = (tvStreamsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type tvStreamsResponse = (tvStreamsResponseSuccess)
+
+export const getTvStreamsUrl = (id: number,
+    season: number,
+    episode: number,) => {
+
+
+
+
+  return `/movies/api/streams/tv/${id}/${season}/${episode}`
+}
+
+export const tvStreams = async (id: number,
+    season: number,
+    episode: number, options?: RequestInit): Promise<tvStreamsResponse> => {
+
+  const res = await fetch(getTvStreamsUrl(id,season,episode),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: tvStreamsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as tvStreamsResponse
 }
 
 

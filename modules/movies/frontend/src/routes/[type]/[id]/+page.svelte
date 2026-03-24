@@ -1,6 +1,11 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { getDetails, imageUrl, type MediaItem, type MediaType } from '$lib/api';
+	import { page } from "$app/state";
+	import {
+		getDetails,
+		imageUrl,
+		type MediaItem,
+		type MediaType,
+	} from "$lib/api";
 
 	let item = $state<MediaItem | null>(null);
 	let error = $state<string | null>(null);
@@ -11,7 +16,7 @@
 		item = null;
 		error = null;
 		getDetails(type, id)
-			.then((m) => (item = m))
+			.then((res) => (item = res.data))
 			.catch((e) => (error = e.message));
 	});
 </script>
@@ -22,9 +27,19 @@
 	<p>Loading...</p>
 {:else}
 	{#if item.backdrop_path}
-		<div class="backdrop" style="background-image: url({imageUrl(item.backdrop_path, 'w1280')})">
+		<div
+			class="backdrop"
+			style="background-image: url({imageUrl(
+				item.backdrop_path,
+				'w1280',
+			)})"
+		>
 			{#if item.images?.logos?.length}
-				<img class="logo" src={imageUrl(item.images.logos[0].file_path, 'w500')} alt={item.title} />
+				<img
+					class="logo"
+					src={imageUrl(item.images.logos[0].file_path, "w500")}
+					alt={item.title}
+				/>
 			{:else}
 				<h1>{item.title}</h1>
 			{/if}
@@ -38,8 +53,8 @@
 	{/if}
 
 	<div class="meta">
-		<span class="badge" class:tv={item.media_type === 'tv'}>
-			{item.media_type === 'movie' ? 'Movie' : 'TV'}
+		<span class="badge" class:tv={item.media_type === "tv"}>
+			{item.media_type === "movie" ? "Movie" : "TV"}
 		</span>
 		{#if item.release_date}
 			<span>{item.release_date.slice(0, 4)}</span>
@@ -70,7 +85,10 @@
 			{#each item.seasons as season}
 				<div class="season">
 					{#if season.poster_path}
-						<img src={imageUrl(season.poster_path, 'w185')} alt={season.name} />
+						<img
+							src={imageUrl(season.poster_path, "w185")}
+							alt={season.name}
+						/>
 					{/if}
 					<h3>{season.name}</h3>
 					<p>{season.episode_count} episodes</p>
@@ -82,7 +100,7 @@
 	{#if item.videos?.length}
 		<h2>Trailers</h2>
 		<div class="trailers">
-			{#each item.videos.filter((v) => v.site === 'YouTube') as video}
+			{#each item.videos.filter((v) => v.site === "YouTube") as video}
 				<div class="trailer">
 					<iframe
 						src="https://www.youtube.com/embed/{video.key}"
@@ -110,7 +128,7 @@
 	}
 
 	.backdrop::after {
-		content: '';
+		content: "";
 		position: absolute;
 		inset: 0;
 		background: linear-gradient(transparent 40%, rgba(0, 0, 0, 0.8));

@@ -46,22 +46,35 @@ fn main() {
         for entry in entries.flatten() {
             let fe_dir = entry.path().join("frontend");
             if fe_dir.join("package.json").exists() {
-                println!(
-                    "cargo:warning=Building frontend for module: {}",
-                    entry.file_name().to_string_lossy()
-                );
+                let module_name = entry.file_name().to_string_lossy().to_string();
+
+                // Generate API client if orval config exists
+                if fe_dir.join("orval.config.ts").exists() {
+                    println!("cargo:warning=Generating API client for module: {module_name}");
+                    let status = Command::new("bunx")
+                        .arg("orval")
+                        .current_dir(&fe_dir)
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .status()
+                        .unwrap_or_else(|_| {
+                            panic!("failed to generate API client for {module_name}")
+                        });
+                    if !status.success() {
+                        println!(
+                            "cargo:warning=API generation failed for {module_name}, skipping (server may not be running)"
+                        );
+                    }
+                }
+
+                println!("cargo:warning=Building frontend for module: {module_name}");
                 let status = Command::new("bun")
                     .args(["run", "build"])
                     .current_dir(&fe_dir)
                     .stdout(Stdio::inherit())
                     .stderr(Stdio::inherit())
                     .status()
-                    .unwrap_or_else(|_| {
-                        panic!(
-                            "failed to build frontend for {}",
-                            entry.file_name().to_string_lossy()
-                        )
-                    });
+                    .unwrap_or_else(|_| panic!("failed to build frontend for {module_name}"));
                 assert!(status.success());
             }
         }

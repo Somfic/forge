@@ -15,7 +15,8 @@
 		timeout = setTimeout(async () => {
 			loading = true;
 			try {
-				results = await search(query);
+				const res = await search({ q: query });
+				results = res.data;
 			} finally {
 				loading = false;
 			}

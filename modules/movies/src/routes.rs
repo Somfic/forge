@@ -1,22 +1,24 @@
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::http::header;
 use axum::response::IntoResponse;
-use axum::{Json, Router, routing::get};
 use serde::Deserialize;
 use utoipa::IntoParams;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use forge::AppContext;
 
 use crate::config::MoviesConfig;
 use crate::tmdb::{MediaItem, MediaType, SearchResult, TmdbClient};
 
-pub fn router() -> Router<AppContext> {
-    Router::new()
-        .route("/search", get(search))
-        .route("/movie/{id}", get(movie_details))
-        .route("/tv/{id}", get(tv_details))
-        .route("/image/{*path}", get(image_proxy))
+pub fn router() -> OpenApiRouter<AppContext> {
+    OpenApiRouter::new()
+        .routes(routes!(search))
+        .routes(routes!(movie_details))
+        .routes(routes!(tv_details))
+        .route("/image/{*path}", axum::routing::get(image_proxy))
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -24,8 +26,7 @@ struct SearchParams {
     q: String,
 }
 
-#[utoipa::path(
-    get, path = "/search",
+#[utoipa::path(get, path = "/search",
     params(SearchParams),
     responses((status = 200, body = Vec<SearchResult>))
 )]
@@ -39,11 +40,7 @@ async fn search(
     Ok(Json(results))
 }
 
-#[utoipa::path(
-    get, path = "/movie/{id}",
-    params(("id" = i64, Path,)),
-    responses((status = 200, body = MediaItem))
-)]
+#[utoipa::path(get, path = "/movie/{id}", responses((status = 200, body = MediaItem)))]
 async fn movie_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
@@ -54,11 +51,7 @@ async fn movie_details(
     Ok(Json(item))
 }
 
-#[utoipa::path(
-    get, path = "/tv/{id}",
-    params(("id" = i64, Path,)),
-    responses((status = 200, body = MediaItem))
-)]
+#[utoipa::path(get, path = "/tv/{id}", responses((status = 200, body = MediaItem)))]
 async fn tv_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,

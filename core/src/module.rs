@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use axum::Router;
 use serde::Serialize;
 use sqlx::migrate::Migrator;
 use utoipa::ToSchema;
+use utoipa_axum::router::OpenApiRouter;
 
 use crate::{AppContext, HealthCheck, LiveCheck, Result};
 
@@ -14,7 +14,7 @@ pub trait Module: Send + Sync + 'static {
         None
     }
 
-    fn routes(&self) -> Router<AppContext>;
+    fn routes(&self) -> OpenApiRouter<AppContext>;
 
     fn migrations(&self) -> Migrator;
 
@@ -25,10 +25,6 @@ pub trait Module: Send + Sync + 'static {
     }
 
     fn live_status(&self) -> Option<Box<dyn LiveCheck>> {
-        None
-    }
-
-    fn openapi_spec(&self) -> Option<utoipa::openapi::OpenApi> {
         None
     }
 }

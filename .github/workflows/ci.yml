@@ -15,7 +15,12 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: oven-sh/setup-bun@v2
+
       - uses: Swatinem/rust-cache@v2
+
+      - run: bun install
+        working-directory: frontend
 
       - run: cargo check --workspace
 

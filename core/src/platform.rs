@@ -2,9 +2,9 @@ use std::{net::SocketAddr, sync::Arc};
 
 use axum::{Json, Router, routing::get};
 use tokio::signal;
-use tracing::info;
+use tracing::{Instrument, error, info, info_span, warn};
 
-use crate::{AppContext, Config, Module, Result};
+use crate::{AppContext, Config, HealthStatus, Module, Result};
 
 pub struct Platform {
     config: Arc<Config>,
@@ -32,42 +32,75 @@ impl Platform {
         let mut router = Router::new();
 
         for module in &self.modules {
-            info!("booting {}", module.name());
+            let span = info_span!("module", module = module.name());
 
-            info!("connecting database for {}", module.name());
-            let pool = crate::db::create_module_pool(&self.config, module.as_ref()).await?;
-            info!("database ready for {}", module.name());
+            let (module_router, entry, check, report) = async {
+                info!("booting");
 
-            let storage = crate::fs::create_storage(&self.config, module.as_ref()).await?;
+                info!("connecting database");
+                let pool = crate::db::create_module_pool(&self.config, module.as_ref()).await?;
+                info!("database ready");
 
-            let ctx = AppContext {
-                db: pool,
-                storage,
-                config: self.config.clone(),
-                events: event_bus.clone(),
-                http: http.clone(),
-            };
+                let storage = crate::fs::create_storage(&self.config, module.as_ref()).await?;
 
-            if let Some(entry) = module.nav_entry() {
-                info!(
-                    "registering nav entry for module '{}': {}",
-                    module.name(),
-                    entry.label
-                );
+                let ctx = AppContext {
+                    db: pool,
+                    storage,
+                    config: self.config.clone(),
+                    events: event_bus.clone(),
+                    http: http.clone(),
+                };
+
+                let entry = module.nav_entry();
+                if let Some(ref e) = entry {
+                    info!("registering nav entry {}", e.label);
+                }
+
+                let check = module.live_status();
+                let report = module.health_check(ctx.clone()).await?;
+
+                if !report.is_empty() {
+                    info!("health checks:");
+                }
+
+                for c in &report {
+                    match c.status {
+                        HealthStatus::Ok => {
+                            info!("  ✓ {}: {}", c.name, c.message.as_deref().unwrap_or("ok"))
+                        }
+                        HealthStatus::Missing => warn!(
+                            "  ✗ {} missing: {}",
+                            c.name,
+                            c.message.as_deref().unwrap_or("")
+                        ),
+                        HealthStatus::Error => error!(
+                            "  ✗ {} error: {}",
+                            c.name,
+                            c.message.as_deref().unwrap_or("")
+                        ),
+                    }
+                }
+
+                let module_routes = module.routes().with_state(ctx.clone());
+
+                info!("starting");
+                module.on_start(ctx).await?;
+                info!("ready");
+
+                crate::Result::Ok((module_routes, entry, check, report))
+            }
+            .instrument(span)
+            .await?;
+
+            router = router.nest(&format!("/{}", module.name()).to_lowercase(), module_router);
+
+            if let Some(entry) = entry {
                 nav_entries.push(entry);
             }
 
-            if let Some(check) = module.health_check() {
-                info!("registering health check for module '{}'", module.name());
+            if let Some(check) = check {
                 health_checks.push(check);
             }
-
-            let module_routes = module.routes().with_state(ctx.clone());
-            router = router.nest(&format!("/{}", module.name()).to_lowercase(), module_routes);
-
-            info!("starting module: {}", module.name());
-            module.on_start(ctx).await?;
-            info!("module {} ready", module.name());
         }
 
         nav_entries.sort_by_key(|e| e.order);

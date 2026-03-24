@@ -2,7 +2,7 @@ use crate::config::MoviesConfig;
 use forge::{HttpClient, json};
 use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct TmdbMovie {
     pub id: i64,
     pub title: String,
@@ -15,20 +15,21 @@ pub struct TmdbMovie {
     pub backdrop_path: Option<String>,
     pub genres: Vec<TmdbGenre>,
     pub videos: Option<TmdbVideos>,
+    pub images: Option<TmdbImages>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct TmdbGenre {
     pub id: i64,
     pub name: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct TmdbVideos {
     pub results: Vec<TmdbVideo>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct TmdbVideo {
     pub key: String,
     pub site: String,
@@ -37,7 +38,23 @@ pub struct TmdbVideo {
     pub video_type: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
+pub struct TmdbImages {
+    pub posters: Vec<TmdbImage>,
+    pub backdrops: Vec<TmdbImage>,
+    pub logos: Vec<TmdbImage>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct TmdbImage {
+    pub file_path: String,
+    pub width: i64,
+    pub height: i64,
+    pub iso_639_1: Option<String>,
+    pub vote_average: f64,
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct TmdbSearchResults {
     pub results: Vec<TmdbSearchResult>,
 }
@@ -49,6 +66,7 @@ pub struct TmdbSearchResult {
     pub overview: Option<String>,
     pub release_date: Option<String>,
     pub poster_path: Option<String>,
+    pub backdrop_path: Option<String>,
 }
 
 pub struct TmdbClient {
@@ -61,6 +79,20 @@ impl TmdbClient {
         Self {
             api_key: config.tmdb_api_key.clone(),
             client,
+        }
+    }
+
+    pub async fn ping(&self) -> forge::Result<String> {
+        let url = format!(
+            "https://api.themoviedb.org/3/authentication?api_key={}",
+            self.api_key
+        );
+        let res = self.client.get(&url).send().await?;
+        let status = res.status();
+        if status.is_success() {
+            Ok("authenticated".into())
+        } else {
+            Err(forge::Error::Generic(status.to_string()))
         }
     }
 
@@ -78,7 +110,7 @@ impl TmdbClient {
 
     pub async fn get_movie_details(&self, movie_id: i64) -> forge::Result<TmdbMovie> {
         let url = format!(
-            "https://api.themoviedb.org/3/movie/{}?api_key={}&append_to_response=videos",
+            "https://api.themoviedb.org/3/movie/{}?api_key={}&append_to_response=videos,images",
             movie_id, self.api_key
         );
         let res = self.client.get(&url).send().await?.error_for_status()?;

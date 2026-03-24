@@ -4,7 +4,7 @@ use serde::Serialize;
 use specta::Type;
 use sqlx::migrate::Migrator;
 
-use crate::{AppContext, HealthCheck, Result};
+use crate::{AppContext, HealthCheck, LiveCheck, Result};
 
 #[async_trait]
 pub trait Module: Send + Sync + 'static {
@@ -20,7 +20,11 @@ pub trait Module: Send + Sync + 'static {
 
     async fn on_start(&self, ctx: AppContext) -> Result<()>;
 
-    fn health_check(&self) -> Option<Box<dyn HealthCheck>> {
+    async fn health_check(&self, ctx: AppContext) -> Result<Vec<HealthCheck>> {
+        Ok(vec![])
+    }
+
+    fn live_status(&self) -> Option<Box<dyn LiveCheck>> {
         None
     }
 }

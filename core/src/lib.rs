@@ -29,8 +29,10 @@ pub use health::*;
 mod platform;
 pub use platform::*;
 
-pub use async_trait::async_trait as module;
+mod logging;
+pub use logging::*;
 
+pub use async_trait::async_trait as module;
 pub use serde_json as json;
 
 #[derive(Clone)]

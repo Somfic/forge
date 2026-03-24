@@ -19,6 +19,8 @@ pub enum Error {
     MigrationError(#[from] sqlx::migrate::MigrateError),
     #[error("address parse error: {0}")]
     AddressParseError(#[from] std::net::AddrParseError),
+    #[error("{0}")]
+    Generic(String),
     #[error("json error: {0}")]
     JsonError(#[from] serde_json::Error),
 }

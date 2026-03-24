@@ -470,6 +470,7 @@ dependencies = [
  "axum",
  "broadcast",
  "md5",
+ "nu-ansi-term",
  "reqwest",
  "serde",
  "serde_json",
@@ -479,6 +480,7 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

@@ -21,6 +21,7 @@ async fn main_wrapper() -> Result<()> {
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
+        .event_format(forge::ForgeFormatter)
         .init();
 
     let config = Config::from_file("spine.toml")?;

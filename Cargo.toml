@@ -10,3 +10,5 @@ serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.50.0", features = ["full"] }
 tracing = "0.1.44"
 reqwest = "0.13.2"
+utoipa = { version = "5", features = ["axum_extras"] }
+utoipa-axum = "0.2"

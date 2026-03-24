@@ -1,10 +1,9 @@
 use crate::config::MoviesConfig;
 use forge::{HttpClient, json};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
-// --- Unified types (what we expose) ---
-
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, ToSchema)]
 pub struct MediaItem {
     pub id: i64,
     pub media_type: MediaType,
@@ -22,14 +21,14 @@ pub struct MediaItem {
     pub seasons: Option<Vec<Season>>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaType {
     Movie,
     Tv,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, ToSchema)]
 pub struct SearchResult {
     pub id: i64,
     pub media_type: MediaType,
@@ -40,13 +39,13 @@ pub struct SearchResult {
     pub backdrop_path: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, ToSchema)]
 pub struct Genre {
     pub id: i64,
     pub name: String,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, ToSchema)]
 pub struct Video {
     pub key: String,
     pub site: String,
@@ -54,14 +53,14 @@ pub struct Video {
     pub video_type: String,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, ToSchema)]
 pub struct Images {
     pub posters: Vec<Image>,
     pub backdrops: Vec<Image>,
     pub logos: Vec<Image>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, ToSchema)]
 pub struct Image {
     pub file_path: String,
     pub width: i64,
@@ -70,7 +69,7 @@ pub struct Image {
     pub vote_average: f64,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Clone, ToSchema)]
 pub struct Season {
     pub id: i64,
     pub season_number: i64,
@@ -313,7 +312,6 @@ impl TmdbClient {
         }
     }
 
-    /// Search for both movies and TV shows
     pub async fn search(&self, query: &str) -> forge::Result<Vec<SearchResult>> {
         let url = format!(
             "https://api.themoviedb.org/3/search/multi?api_key={}&query={}",
@@ -330,7 +328,6 @@ impl TmdbClient {
             .collect())
     }
 
-    /// Get details for a movie or TV show
     pub async fn details(&self, media_type: MediaType, id: i64) -> forge::Result<MediaItem> {
         let type_str = match media_type {
             MediaType::Movie => "movie",

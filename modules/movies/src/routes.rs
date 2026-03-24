@@ -4,6 +4,7 @@ use axum::http::header;
 use axum::response::IntoResponse;
 use axum::{Json, Router, routing::get};
 use serde::Deserialize;
+use utoipa::IntoParams;
 
 use forge::AppContext;
 
@@ -18,11 +19,16 @@ pub fn router() -> Router<AppContext> {
         .route("/image/{*path}", get(image_proxy))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, IntoParams)]
 struct SearchParams {
     q: String,
 }
 
+#[utoipa::path(
+    get, path = "/search",
+    params(SearchParams),
+    responses((status = 200, body = Vec<SearchResult>))
+)]
 async fn search(
     State(ctx): State<AppContext>,
     Query(params): Query<SearchParams>,
@@ -33,6 +39,11 @@ async fn search(
     Ok(Json(results))
 }
 
+#[utoipa::path(
+    get, path = "/movie/{id}",
+    params(("id" = i64, Path,)),
+    responses((status = 200, body = MediaItem))
+)]
 async fn movie_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
@@ -43,6 +54,11 @@ async fn movie_details(
     Ok(Json(item))
 }
 
+#[utoipa::path(
+    get, path = "/tv/{id}",
+    params(("id" = i64, Path,)),
+    responses((status = 200, body = MediaItem))
+)]
 async fn tv_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,

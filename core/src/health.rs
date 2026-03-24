@@ -1,19 +1,19 @@
 use async_trait::async_trait;
 use serde::Serialize;
-use specta::Type;
+use utoipa::ToSchema;
 
 #[async_trait]
 pub trait LiveCheck: Send + Sync {
     async fn check(&self) -> LiveReport;
 }
 
-#[derive(Serialize, Type, Clone)]
+#[derive(Serialize, ToSchema, Clone)]
 pub struct HealthReport {
     pub module: &'static str,
     pub checks: Vec<HealthCheck>,
 }
 
-#[derive(Serialize, Type, Clone)]
+#[derive(Serialize, ToSchema, Clone)]
 pub struct HealthCheck {
     pub name: String,
     pub status: HealthStatus,
@@ -22,7 +22,7 @@ pub struct HealthCheck {
     pub latency_ms: Option<u64>,
 }
 
-#[derive(Serialize, Type, Clone)]
+#[derive(Serialize, ToSchema, Clone)]
 pub struct LiveReport {
     pub module: &'static str,
     pub status: LiveStatus,
@@ -30,7 +30,7 @@ pub struct LiveReport {
     pub message: Option<String>,
 }
 
-#[derive(Serialize, Type, Clone, PartialEq)]
+#[derive(Serialize, ToSchema, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum LiveStatus {
     Up,
@@ -38,7 +38,7 @@ pub enum LiveStatus {
     Down,
 }
 
-#[derive(Serialize, Type, Clone, PartialEq)]
+#[derive(Serialize, ToSchema, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum HealthStatus {
     Ok,

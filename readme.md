@@ -5,6 +5,8 @@
 ## modules
 
 - [ ] photos / videos
-- [ ] movies
+- [ ] movies / tv
+    - [x] tmdb integration
+    - [ ] auto skip intro
 - [ ] music
 - [ ] books

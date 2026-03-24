@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use tokio::sync::broadcast;
+use utoipa::ToSchema;
 
 use crate::Config;
 
-#[derive(Clone, Serialize, Deserialize, Type)]
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct Event {
     pub topic: String,
     pub payload: serde_json::Value,

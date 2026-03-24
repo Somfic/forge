@@ -1,10 +1,15 @@
 use axum::Router;
 use forge::{AppContext, Module, module};
 use sqlx::migrate::Migrator;
+use utoipa::OpenApi;
 
 mod config;
 mod routes;
 mod tmdb;
+
+#[derive(OpenApi)]
+#[openapi(paths(routes::search, routes::movie_details, routes::tv_details))]
+struct MoviesApi;
 
 pub struct MoviesModule;
 
@@ -46,5 +51,9 @@ impl Module for MoviesModule {
             message: Some(message),
             requirement: Some("Valid TMDB API key".into()),
         }])
+    }
+
+    fn openapi_spec(&self) -> Option<utoipa::openapi::OpenApi> {
+        Some(MoviesApi::openapi())
     }
 }

@@ -116,6 +116,17 @@ async fn init_module(
     info!("mounting api at {api_prefix}");
     router = router.nest(&api_prefix, module.routes().with_state(ctx.clone()));
 
+    // OpenAPI spec
+    if let Some(spec) = module.openapi_spec() {
+        let spec_path = format!("{}/openapi.json", api_prefix);
+        info!("serving openapi spec at {spec_path}");
+        let spec_json = serde_json::to_value(&spec).unwrap();
+        router = router.route(
+            &spec_path,
+            get(move || async move { Json(spec_json.clone()) }),
+        );
+    }
+
     module.on_start(ctx).await?;
 
     Ok(InitResult {

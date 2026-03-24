@@ -2,15 +2,13 @@ use async_trait::async_trait;
 use axum::Router;
 use serde::Serialize;
 use specta::Type;
+use sqlx::migrate::Migrator;
 
 use crate::{AppContext, HealthCheck, Result};
 
-#[derive(Serialize, Type, Clone, Debug)]
-pub enum ModuleName {}
-
 #[async_trait]
 pub trait Module: Send + Sync + 'static {
-    fn name(&self) -> ModuleName;
+    fn name(&self) -> &'static str;
 
     fn nav_entry(&self) -> Option<NavEntry> {
         None
@@ -18,13 +16,9 @@ pub trait Module: Send + Sync + 'static {
 
     fn routes(&self) -> Router<AppContext>;
 
-    fn migrations(&self) -> Vec<&'static str> {
-        vec![]
-    }
+    fn migrations(&self) -> Migrator;
 
-    async fn on_start(&self, ctx: AppContext) -> Result<()> {
-        Ok(())
-    }
+    async fn on_start(&self, ctx: AppContext) -> Result<()>;
 
     fn health_check(&self) -> Option<Box<dyn HealthCheck>> {
         None

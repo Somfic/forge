@@ -11,33 +11,12 @@ pub struct Platform {
     modules: Vec<Box<dyn Module>>,
 }
 
-pub struct PlatformBuilder {
-    config: Arc<Config>,
-    modules: Vec<Box<dyn Module>>,
-}
-
 impl Platform {
-    pub fn new(config: Config) -> PlatformBuilder {
-        PlatformBuilder {
-            config: Arc::new(config),
-            modules: Vec::new(),
-        }
-    }
-}
-
-impl PlatformBuilder {
-    pub fn with_module(mut self, module: impl Module + 'static) -> Self {
-        self.modules.push(Box::new(module));
-        self
-    }
-
-    pub async fn run(self) -> Result<()> {
+    pub fn new(config: Config, modules: Vec<Box<dyn Module>>) -> Platform {
         Platform {
-            config: self.config,
-            modules: self.modules,
+            config: Arc::new(config),
+            modules,
         }
-        .run()
-        .await
     }
 }
 
@@ -50,17 +29,16 @@ impl Platform {
 
         let mut nav_entries = Vec::new();
         let mut health_checks = Vec::new();
-        let router = Router::new();
+        let mut router = Router::new();
 
-        info!("loading {} module(s)", self.modules.len());
         for module in &self.modules {
-            info!("booting module: {:?}", module.name());
+            info!("booting {}", module.name());
 
-            info!("connecting database for {:?}", module.name());
+            info!("connecting database for {}", module.name());
             let pool = crate::db::create_module_pool(&self.config, module.as_ref()).await?;
-            info!("database ready for {:?}", module.name());
+            info!("database ready for {}", module.name());
 
-            let storage = crate::storage::create_storage(&self.config, module.as_ref()).await?;
+            let storage = crate::fs::create_storage(&self.config, module.as_ref()).await?;
 
             let ctx = AppContext {
                 db: pool,
@@ -72,7 +50,7 @@ impl Platform {
 
             if let Some(entry) = module.nav_entry() {
                 info!(
-                    "registering nav entry for module '{:?}': {}",
+                    "registering nav entry for module '{}': {}",
                     module.name(),
                     entry.label
                 );
@@ -80,16 +58,16 @@ impl Platform {
             }
 
             if let Some(check) = module.health_check() {
-                info!("registering health check for module '{:?}'", module.name());
+                info!("registering health check for module '{}'", module.name());
                 health_checks.push(check);
             }
 
-            let module_routes = module.routes().with_state(ctx);
-            router = router.nest(&format!("/{:?}", module.name()), module_routes);
+            let module_routes = module.routes().with_state(ctx.clone());
+            router = router.nest(&format!("/{}", module.name()).to_lowercase(), module_routes);
 
-            info!("starting module: {:?}", module.name());
+            info!("starting module: {}", module.name());
             module.on_start(ctx).await?;
-            info!("module {:?} ready", module.name());
+            info!("module {} ready", module.name());
         }
 
         nav_entries.sort_by_key(|e| e.order);

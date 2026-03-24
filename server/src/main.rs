@@ -1,4 +1,9 @@
-use forge_core::{Config, Platform, Result};
+use forge::{Config, Platform, Result};
+use movies::MoviesModule;
+
+fn modules() -> Vec<Box<dyn forge::Module>> {
+    vec![Box::new(MoviesModule)]
+}
 
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
@@ -19,7 +24,6 @@ async fn main_wrapper() -> Result<()> {
         .init();
 
     let config = Config::from_file("spine.toml")?;
-    tracing::info!("loaded config from spine.toml");
 
-    Platform::new(config).run().await
+    Platform::new(config, modules()).run().await
 }

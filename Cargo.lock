@@ -463,7 +463,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
-name = "forge_core"
+name = "forge"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -478,6 +478,16 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml",
+ "tracing",
+]
+
+[[package]]
+name = "forge_server"
+version = "0.1.0"
+dependencies = [
+ "forge",
+ "movies",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1140,6 +1150,17 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "movies"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "forge",
+ "serde",
+ "sqlx",
+ "urlencoding",
 ]
 
 [[package]]
@@ -2536,6 +2557,12 @@ dependencies = [
  "percent-encoding",
  "serde",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
 
 [[package]]
 name = "utf8_iter"

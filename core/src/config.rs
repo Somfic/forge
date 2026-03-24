@@ -9,7 +9,6 @@ pub struct Config {
     pub host: String,
     pub port: u16,
     pub data_dir: PathBuf,
-    pub storage_root: PathBuf,
     // pub auth: AuthConfig,
     #[serde(flatten)]
     pub modules: HashMap<String, toml::Value>,

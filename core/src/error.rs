@@ -15,8 +15,10 @@ pub enum Error {
     },
     #[error("io error: {0}")]
     IoError(#[from] std::io::Error),
-    #[error("migration error: migration '{0}' has already been applied in schema '{1}'")]
-    MigrationAlreadyApplied(String, String),
+    #[error("migration error: {0}")]
+    MigrationError(#[from] sqlx::migrate::MigrateError),
     #[error("address parse error: {0}")]
     AddressParseError(#[from] std::net::AddrParseError),
+    #[error("json error: {0}")]
+    JsonError(#[from] serde_json::Error),
 }

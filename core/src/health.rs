@@ -2,8 +2,6 @@ use async_trait::async_trait;
 use serde::Serialize;
 use specta::Type;
 
-use crate::ModuleName;
-
 #[async_trait]
 pub trait HealthCheck: Send + Sync {
     async fn check(&self) -> HealthStatus;
@@ -11,7 +9,7 @@ pub trait HealthCheck: Send + Sync {
 
 #[derive(Serialize, Type, Clone)]
 pub struct HealthStatus {
-    pub module: ModuleName,
+    pub module: &'static str,
     pub status: ServiceStatus,
     pub latency_ms: Option<u64>,
     pub message: Option<String>,

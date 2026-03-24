@@ -14,8 +14,8 @@ pub use events::*;
 mod http;
 pub use http::*;
 
-mod storage;
-pub use storage::*;
+mod fs;
+pub use fs::*;
 
 mod error;
 pub use error::*;
@@ -28,6 +28,10 @@ pub use health::*;
 
 mod platform;
 pub use platform::*;
+
+pub use async_trait::async_trait as module;
+
+pub use serde_json as json;
 
 #[derive(Clone)]
 pub struct AppContext {

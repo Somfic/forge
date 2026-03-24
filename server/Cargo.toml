@@ -1,0 +1,11 @@
+[package]
+name = "forge_server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+forge = { path = "../core" }
+movies = { path = "../modules/movies" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

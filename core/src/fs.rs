@@ -18,7 +18,10 @@ impl Storage {
 }
 
 pub(crate) async fn create_storage(config: &Config, module: &dyn Module) -> Result<Storage> {
-    let path = config.storage_root.join(format!("{:?}", module.name()));
+    let path = config
+        .data_dir
+        .join(module.name().to_lowercase())
+        .join("fs");
     tokio::fs::create_dir_all(&path).await?;
     Ok(Storage(Arc::new(path)))
 }

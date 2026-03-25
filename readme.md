@@ -8,5 +8,8 @@
 - [ ] movies / tv
     - [x] tmdb integration
     - [ ] auto skip intro
+    - [ ] subtitles
+    - [ ] watch parties
+        - [ ] sync playback
 - [ ] music
 - [ ] books

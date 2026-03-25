@@ -501,21 +501,80 @@
       "Stream": {
         "type": "object",
         "required": [
+          "info_hash",
+          "file_idx",
           "name",
           "title",
-          "info_hash",
-          "file_idx"
+          "source",
+          "hdr",
+          "score"
         ],
         "properties": {
+          "audio": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "codec": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "file_idx": {
             "type": "integer",
             "format": "int64"
+          },
+          "hdr": {
+            "type": "boolean"
           },
           "info_hash": {
             "type": "string"
           },
           "name": {
             "type": "string"
+          },
+          "resolution": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": "number",
+            "format": "double"
+          },
+          "seeders": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "size_display": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "title": {
             "type": "string"

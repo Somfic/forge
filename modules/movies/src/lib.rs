@@ -4,6 +4,7 @@ use utoipa_axum::router::OpenApiRouter;
 
 mod config;
 mod routes;
+mod streams;
 mod tmdb;
 mod torrentio;
 

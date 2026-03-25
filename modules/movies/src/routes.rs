@@ -11,8 +11,9 @@ use utoipa_axum::routes;
 use forge::AppContext;
 
 use crate::config::MoviesConfig;
+use crate::streams::Stream;
 use crate::tmdb::{MediaItem, MediaType, SearchResult, TmdbClient};
-use crate::torrentio::{Stream, TorrentioClient};
+use crate::torrentio::StremioClient;
 
 pub fn router() -> OpenApiRouter<AppContext> {
     OpenApiRouter::new()
@@ -80,9 +81,8 @@ async fn movie_streams(
         .imdb_id
         .ok_or_else(|| forge::Error::Generic("No IMDB ID found for this movie".into()))?;
 
-    // Query Torrentio for streams
-    let torrentio = TorrentioClient::new(ctx.http.clone(), config.stremio_url.clone());
-    let streams = torrentio.streams_for_movie(&imdb_id).await?;
+    let path = format!("movie/{}", imdb_id);
+    let streams = crate::streams::aggregate(&ctx.http, &config.stream_sources, &path).await;
 
     Ok(Json(streams))
 }
@@ -100,8 +100,8 @@ async fn tv_streams(
         .imdb_id
         .ok_or_else(|| forge::Error::Generic("No IMDB ID found for this show".into()))?;
 
-    let torrentio = TorrentioClient::new(ctx.http.clone(), config.stremio_url.clone());
-    let streams = torrentio.streams_for_episode(&imdb_id, season, episode).await?;
+    let path = format!("series/{}:{}:{}", imdb_id, season, episode);
+    let streams = crate::streams::aggregate(&ctx.http, &config.stream_sources, &path).await;
 
     Ok(Json(streams))
 }
@@ -119,7 +119,7 @@ async fn start_stream(
     Path((info_hash, file_idx)): Path<(String, i64)>,
 ) -> Result<Json<StartStreamResponse>, AppError> {
     let config = ctx.config.module_config::<MoviesConfig>("movies")?;
-    let torrentio = TorrentioClient::new(ctx.http.clone(), config.stremio_url.clone());
+    let torrentio = StremioClient::new(ctx.http.clone(), config.stremio_url.clone());
     let url = torrentio.start(&info_hash, file_idx).await?;
     Ok(Json(StartStreamResponse { url }))
 }

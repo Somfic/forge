@@ -152,8 +152,32 @@
 			<div class="streams">
 				{#each streams as stream}
 					<button class="stream-option" onclick={() => play(stream)} disabled={loadingPlay}>
-						<span class="stream-name">{stream.name}</span>
-						<span class="stream-title">{stream.title}</span>
+						<div class="stream-top">
+							{#if stream.resolution}
+								<span class="stream-badge res">{stream.resolution}</span>
+							{/if}
+							{#if stream.hdr}
+								<span class="stream-badge hdr">HDR</span>
+							{/if}
+							{#if stream.codec}
+								<span class="stream-badge">{stream.codec}</span>
+							{/if}
+							{#if stream.audio}
+								<span class="stream-badge audio">{stream.audio}</span>
+							{/if}
+							{#if stream.source_type}
+								<span class="stream-badge source">{stream.source_type}</span>
+							{/if}
+						</div>
+						<div class="stream-bottom">
+							{#if stream.seeders}
+								<span>👤 {stream.seeders}</span>
+							{/if}
+							{#if stream.size_display}
+								<span>💾 {stream.size_display}</span>
+							{/if}
+							<span class="stream-source">{stream.source}</span>
+						</div>
 					</button>
 				{/each}
 			</div>
@@ -276,8 +300,8 @@
 
 	.stream-option {
 		display: flex;
-		gap: 1rem;
-		align-items: baseline;
+		flex-direction: column;
+		gap: 0.4rem;
 		background: #1a1a2e;
 		border: 1px solid #333;
 		border-radius: 8px;
@@ -292,16 +316,53 @@
 		background: #1e1e3a;
 	}
 
-	.stream-name {
-		font-weight: bold;
-		white-space: pre-line;
-		min-width: 80px;
+	.stream-top {
+		display: flex;
+		gap: 0.4rem;
+		flex-wrap: wrap;
+		align-items: center;
 	}
 
-	.stream-title {
+	.stream-badge {
+		padding: 0.15rem 0.5rem;
+		border-radius: 4px;
+		font-size: 0.7rem;
+		font-weight: bold;
+		background: #333;
+		color: #ccc;
+	}
+
+	.stream-badge.res {
+		background: #2563eb;
+		color: white;
+	}
+
+	.stream-badge.hdr {
+		background: #d97706;
+		color: white;
+	}
+
+	.stream-badge.audio {
+		background: #7c3aed;
+		color: white;
+	}
+
+	.stream-badge.source {
+		background: #065f46;
+		color: #a7f3d0;
+	}
+
+	.stream-bottom {
+		display: flex;
+		gap: 1rem;
+		font-size: 0.8rem;
 		color: #888;
-		font-size: 0.85rem;
-		white-space: pre-line;
+	}
+
+	.stream-source {
+		margin-left: auto;
+		color: #666;
+		font-size: 0.75rem;
 	}
 
 	.backdrop {

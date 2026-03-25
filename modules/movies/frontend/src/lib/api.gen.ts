@@ -97,9 +97,32 @@ export interface StartStreamResponse {
 }
 
 export interface Stream {
+  /** @nullable */
+  audio?: string | null;
+  /** @nullable */
+  codec?: string | null;
   file_idx: number;
+  hdr: boolean;
   info_hash: string;
   name: string;
+  /** @nullable */
+  resolution?: string | null;
+  score: number;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  seeders?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  size_bytes?: number | null;
+  /** @nullable */
+  size_display?: string | null;
+  source: string;
+  /** @nullable */
+  source_type?: string | null;
   title: string;
 }
 

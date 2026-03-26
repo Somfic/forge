@@ -441,7 +441,6 @@
 	<!-- Gradient overlay when paused but backdrop not yet showing -->
 	<GradientOverlay visible={paused && !pausedIdle && !loading} />
 
-
 	<!-- Single centered title — shown when paused or loading -->
 	<div
 		class="title-overlay"
@@ -715,7 +714,7 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
-		background: transparent;
+		background: #000;
 		overflow: hidden;
 		outline: none;
 		user-select: none;
@@ -762,7 +761,6 @@
 		display: flex;
 		gap: 0.5rem;
 	}
-
 
 	/* ── Title overlay (single element, always mounted) ── */
 	.title-overlay {
@@ -880,7 +878,7 @@
 	/* ── Subtitles ── */
 	.subtitles-container {
 		position: absolute;
-		bottom: 80px;
+		bottom: 120px;
 		left: 0;
 		right: 0;
 		z-index: 4;
@@ -906,7 +904,7 @@
 	.subtitle-line p {
 		display: inline;
 		font-family: var(--subtitle-font);
-		font-size: clamp(1.5rem, 2.5vw, 2rem);
+		font-size: clamp(2rem, 2.5vw, 3rem);
 		font-weight: 500;
 		line-height: 1.4;
 		color: #fff;

@@ -20,8 +20,10 @@
 
 	let layerAEl: HTMLDivElement;
 	let layerBEl: HTMLDivElement;
-	let overrideEl: HTMLDivElement;
+	let overrideAEl: HTMLDivElement;
+	let overrideBEl: HTMLDivElement;
 	let useA = true;
+	let useOverrideA = true;
 	let index = 0;
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let imagesKey = "";
@@ -104,7 +106,7 @@
 		stopCycling();
 		if (images.length <= 1) return;
 		timer = setInterval(() => {
-			if (overrideEl?.style.opacity === "1") return;
+			if (overrideAEl?.style.opacity === "1" || overrideBEl?.style.opacity === "1") return;
 			index = (index + 1) % images.length;
 			crossfadeTo(images[index]);
 		}, interval);
@@ -123,29 +125,34 @@
 		startCycling();
 	});
 
-	// Watch override
+	// Watch override — crossfade between two override layers
 	$effect(() => {
-		if (!overrideEl) return;
+		if (!overrideAEl || !overrideBEl) return;
 		if (override) {
 			preloadImg(override)
 				.then((img) => {
 					const color = extractColor(img);
-					queueMicrotask(() => {
-						dominantColor = color;
-					});
-					overrideEl.style.backgroundImage = `url(${override})`;
-					overrideEl.offsetHeight;
-					overrideEl.style.opacity = "1";
+					queueMicrotask(() => { dominantColor = color; });
+
+					const incoming = useOverrideA ? overrideAEl : overrideBEl;
+					const outgoing = useOverrideA ? overrideBEl : overrideAEl;
+
+					incoming.style.backgroundImage = `url(${override})`;
+					incoming.offsetHeight;
+					incoming.style.opacity = "1";
+					outgoing.style.opacity = "0";
+					useOverrideA = !useOverrideA;
 				})
 				.catch(() => {});
 		} else {
-			overrideEl.style.opacity = "0";
+			overrideAEl.style.opacity = "0";
+			overrideBEl.style.opacity = "0";
 		}
 	});
 
 	// Reactively update pan position on all layers
 	$effect(() => {
-		for (const el of [layerAEl, layerBEl, overrideEl]) {
+		for (const el of [layerAEl, layerBEl, overrideAEl, overrideBEl]) {
 			if (el) el.style.transform = `translateX(${position})`;
 		}
 	});
@@ -156,7 +163,8 @@
 <div class="cycling-backdrop">
 	<div class="layer" bind:this={layerAEl}></div>
 	<div class="layer" bind:this={layerBEl}></div>
-	<div class="layer override" bind:this={overrideEl}></div>
+	<div class="layer override" bind:this={overrideAEl}></div>
+	<div class="layer override" bind:this={overrideBEl}></div>
 	<GradientOverlay visible={overlay} />
 </div>
 

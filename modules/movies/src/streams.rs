@@ -46,6 +46,7 @@ pub struct Stream {
     pub audio: Option<String>,
     pub source_type: Option<String>,
     pub hdr: bool,
+    pub imax: bool,
     pub seeders: Option<u32>,
     pub size_bytes: Option<u64>,
     pub size_display: Option<String>,
@@ -143,6 +144,7 @@ async fn fetch_source(
             let audio = parse_audio(filename, &title);
             let source_type = parse_source_type(binge_group, &title);
             let hdr = parse_hdr(binge_group, &title);
+            let imax = parse_imax(binge_group, &title, filename);
             let seeders = parse_seeders(&title);
             let (size_bytes, size_display) = parse_size(&title);
 
@@ -157,6 +159,7 @@ async fn fetch_source(
                 audio,
                 source_type,
                 hdr,
+                imax,
                 seeders,
                 size_bytes,
                 size_display,
@@ -337,6 +340,17 @@ fn parse_hdr(binge_group: Option<&str>, title: &str) -> bool {
         || text.contains("dolby vision")
         || text.contains("|dv|")
         || text.contains("|dv")
+}
+
+fn parse_imax(binge_group: Option<&str>, title: &str, filename: Option<&str>) -> bool {
+    let text = format!(
+        "{}|{}|{}",
+        binge_group.unwrap_or(""),
+        title,
+        filename.unwrap_or("")
+    )
+    .to_lowercase();
+    text.contains("imax")
 }
 
 // --- Scoring ---

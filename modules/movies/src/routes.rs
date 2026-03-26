@@ -12,6 +12,7 @@ use forge::AppContext;
 
 use crate::config::MoviesConfig;
 use crate::streams::Stream;
+use crate::subtitles::{SubtitleCue, SubtitleTrack};
 use crate::tmdb::{MediaItem, MediaType, SearchResult, TmdbClient};
 use crate::torrentio::StremioClient;
 
@@ -23,6 +24,9 @@ pub fn router() -> OpenApiRouter<AppContext> {
         .routes(routes!(movie_streams))
         .routes(routes!(tv_streams))
         .routes(routes!(start_stream))
+        .routes(routes!(movie_subtitles))
+        .routes(routes!(tv_subtitles))
+        .routes(routes!(subtitle_cues))
         .route("/image/{*path}", axum::routing::get(image_proxy))
 }
 
@@ -122,6 +126,58 @@ async fn start_stream(
     let torrentio = StremioClient::new(ctx.http.clone(), config.stremio_url.clone());
     let url = torrentio.start(&info_hash, file_idx).await?;
     Ok(Json(StartStreamResponse { url }))
+}
+
+#[utoipa::path(get, path = "/subtitles/movie/{id}", responses((status = 200, body = Vec<SubtitleTrack>)))]
+async fn movie_subtitles(
+    State(ctx): State<AppContext>,
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<SubtitleTrack>>, AppError> {
+    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let tmdb = TmdbClient::new(&config, ctx.http.clone());
+    let item = tmdb.details(MediaType::Movie, id).await?;
+    let imdb_id = item
+        .imdb_id
+        .ok_or_else(|| forge::Error::Generic("No IMDB ID found".into()))?;
+
+    let path = format!("movie/{}", imdb_id);
+    let tracks = crate::subtitles::fetch_tracks(&ctx.http, &path, &config.subtitle_languages).await;
+    Ok(Json(tracks))
+}
+
+#[utoipa::path(get, path = "/subtitles/tv/{id}/{season}/{episode}", responses((status = 200, body = Vec<SubtitleTrack>)))]
+async fn tv_subtitles(
+    State(ctx): State<AppContext>,
+    Path((id, season, episode)): Path<(i64, i64, i64)>,
+) -> Result<Json<Vec<SubtitleTrack>>, AppError> {
+    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let tmdb = TmdbClient::new(&config, ctx.http.clone());
+    let item = tmdb.details(MediaType::Tv, id).await?;
+    let imdb_id = item
+        .imdb_id
+        .ok_or_else(|| forge::Error::Generic("No IMDB ID found".into()))?;
+
+    let path = format!("series/{}:{}:{}", imdb_id, season, episode);
+    let tracks = crate::subtitles::fetch_tracks(&ctx.http, &path, &config.subtitle_languages).await;
+    Ok(Json(tracks))
+}
+
+#[derive(Deserialize, IntoParams)]
+struct SubtitleCueParams {
+    /// URL of the SRT subtitle file
+    url: String,
+}
+
+#[utoipa::path(get, path = "/subtitles/cues",
+    params(SubtitleCueParams),
+    responses((status = 200, body = Vec<SubtitleCue>))
+)]
+async fn subtitle_cues(
+    State(ctx): State<AppContext>,
+    Query(params): Query<SubtitleCueParams>,
+) -> Result<Json<Vec<SubtitleCue>>, AppError> {
+    let cues = crate::subtitles::fetch_cues(&ctx.http, &params.url).await;
+    Ok(Json(cues))
 }
 
 async fn image_proxy(

@@ -5,24 +5,18 @@
  * Utoipa's axum bindings for seamless integration for the two
  * OpenAPI spec version: 0.2.0
  */
+export interface Episode {
+  episode_number: number;
+  name: string;
+  /** @nullable */
+  overview?: string | null;
+  /** @nullable */
+  still_path?: string | null;
+}
+
 export interface Genre {
   id: number;
   name: string;
-}
-
-export interface Image {
-  file_path: string;
-  height: number;
-  /** @nullable */
-  iso_639_1?: string | null;
-  vote_average: number;
-  width: number;
-}
-
-export interface Images {
-  backdrops: Image[];
-  logos: Image[];
-  posters: Image[];
 }
 
 export type MediaType = typeof MediaType[keyof typeof MediaType];
@@ -37,6 +31,7 @@ export interface Season {
   /** @nullable */
   air_date?: string | null;
   episode_count: number;
+  episodes: Episode[];
   id: number;
   name: string;
   /** @nullable */
@@ -52,13 +47,13 @@ export interface Video {
 }
 
 export interface MediaItem {
-  /** @nullable */
-  backdrop_path?: string | null;
+  backdrops: string[];
   genres: Genre[];
   id: number;
-  images?: null | Images;
   /** @nullable */
   imdb_id?: string | null;
+  /** @nullable */
+  logo_path?: string | null;
   media_type: MediaType;
   /** @nullable */
   overview?: string | null;
@@ -103,6 +98,7 @@ export interface Stream {
   codec?: string | null;
   file_idx: number;
   hdr: boolean;
+  imax: boolean;
   info_hash: string;
   name: string;
   /** @nullable */
@@ -126,8 +122,31 @@ export interface Stream {
   title: string;
 }
 
+export interface SubtitleCue {
+  /** End time in seconds */
+  end: number;
+  /** Start time in seconds */
+  start: number;
+  text: string;
+}
+
+export interface SubtitleTrack {
+  id: string;
+  language: string;
+  /** Higher score = more likely to be in sync */
+  score: number;
+  url: string;
+}
+
 export type SearchParams = {
 q: string;
+};
+
+export type SubtitleCuesParams = {
+/**
+ * URL of the SRT subtitle file
+ */
+url: string;
 };
 
 export type movieDetailsResponse200 = {
@@ -334,6 +353,134 @@ export const tvStreams = async (id: number,
 
   const data: tvStreamsResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as tvStreamsResponse
+}
+
+
+
+export type subtitleCuesResponse200 = {
+  data: SubtitleCue[]
+  status: 200
+}
+
+export type subtitleCuesResponseSuccess = (subtitleCuesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type subtitleCuesResponse = (subtitleCuesResponseSuccess)
+
+export const getSubtitleCuesUrl = (params: SubtitleCuesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/movies/api/subtitles/cues?${stringifiedParams}` : `/movies/api/subtitles/cues`
+}
+
+export const subtitleCues = async (params: SubtitleCuesParams, options?: RequestInit): Promise<subtitleCuesResponse> => {
+
+  const res = await fetch(getSubtitleCuesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: subtitleCuesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as subtitleCuesResponse
+}
+
+
+
+export type movieSubtitlesResponse200 = {
+  data: SubtitleTrack[]
+  status: 200
+}
+
+export type movieSubtitlesResponseSuccess = (movieSubtitlesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type movieSubtitlesResponse = (movieSubtitlesResponseSuccess)
+
+export const getMovieSubtitlesUrl = (id: number,) => {
+
+
+
+
+  return `/movies/api/subtitles/movie/${id}`
+}
+
+export const movieSubtitles = async (id: number, options?: RequestInit): Promise<movieSubtitlesResponse> => {
+
+  const res = await fetch(getMovieSubtitlesUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: movieSubtitlesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as movieSubtitlesResponse
+}
+
+
+
+export type tvSubtitlesResponse200 = {
+  data: SubtitleTrack[]
+  status: 200
+}
+
+export type tvSubtitlesResponseSuccess = (tvSubtitlesResponse200) & {
+  headers: Headers;
+};
+;
+
+export type tvSubtitlesResponse = (tvSubtitlesResponseSuccess)
+
+export const getTvSubtitlesUrl = (id: number,
+    season: number,
+    episode: number,) => {
+
+
+
+
+  return `/movies/api/subtitles/tv/${id}/${season}/${episode}`
+}
+
+export const tvSubtitles = async (id: number,
+    season: number,
+    episode: number, options?: RequestInit): Promise<tvSubtitlesResponse> => {
+
+  const res = await fetch(getTvSubtitlesUrl(id,season,episode),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: tvSubtitlesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as tvSubtitlesResponse
 }
 
 

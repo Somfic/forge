@@ -27,6 +27,11 @@ pub trait Module: Send + Sync + 'static {
     fn live_status(&self) -> Option<Box<dyn LiveCheck>> {
         None
     }
+
+    /// Port for the Vite dev server (used with `--dev` for reverse proxying)
+    fn dev_port(&self) -> Option<u16> {
+        None
+    }
 }
 
 #[derive(Serialize, ToSchema, Clone)]

@@ -29,6 +29,9 @@ pub use health::*;
 mod platform;
 pub use platform::*;
 
+mod proxy;
+pub use proxy::*;
+
 mod logging;
 pub use logging::*;
 

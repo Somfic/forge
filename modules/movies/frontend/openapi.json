@@ -188,6 +188,117 @@
         }
       }
     },
+    "/subtitles/cues": {
+      "get": {
+        "operationId": "subtitle_cues",
+        "parameters": [
+          {
+            "name": "url",
+            "in": "query",
+            "description": "URL of the SRT subtitle file",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubtitleCue"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subtitles/movie/{id}": {
+      "get": {
+        "operationId": "movie_subtitles",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubtitleTrack"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/subtitles/tv/{id}/{season}/{episode}": {
+      "get": {
+        "operationId": "tv_subtitles",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "season",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "episode",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubtitleTrack"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tv/{id}": {
       "get": {
         "operationId": "tv_details",
@@ -219,6 +330,34 @@
   },
   "components": {
     "schemas": {
+      "Episode": {
+        "type": "object",
+        "required": [
+          "episode_number",
+          "name"
+        ],
+        "properties": {
+          "episode_number": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "still_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "Genre": {
         "type": "object",
         "required": [
@@ -235,81 +374,22 @@
           }
         }
       },
-      "Image": {
-        "type": "object",
-        "required": [
-          "file_path",
-          "width",
-          "height",
-          "vote_average"
-        ],
-        "properties": {
-          "file_path": {
-            "type": "string"
-          },
-          "height": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "iso_639_1": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "vote_average": {
-            "type": "number",
-            "format": "double"
-          },
-          "width": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "Images": {
-        "type": "object",
-        "required": [
-          "posters",
-          "backdrops",
-          "logos"
-        ],
-        "properties": {
-          "backdrops": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Image"
-            }
-          },
-          "logos": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Image"
-            }
-          },
-          "posters": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Image"
-            }
-          }
-        }
-      },
       "MediaItem": {
         "type": "object",
         "required": [
           "id",
           "media_type",
           "title",
+          "backdrops",
           "genres",
           "videos"
         ],
         "properties": {
-          "backdrop_path": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "backdrops": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "genres": {
             "type": "array",
@@ -321,17 +401,13 @@
             "type": "integer",
             "format": "int64"
           },
-          "images": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/Images"
-              }
+          "imdb_id": {
+            "type": [
+              "string",
+              "null"
             ]
           },
-          "imdb_id": {
+          "logo_path": {
             "type": [
               "string",
               "null"
@@ -455,7 +531,8 @@
           "id",
           "season_number",
           "name",
-          "episode_count"
+          "episode_count",
+          "episodes"
         ],
         "properties": {
           "air_date": {
@@ -467,6 +544,12 @@
           "episode_count": {
             "type": "integer",
             "format": "int64"
+          },
+          "episodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Episode"
+            }
           },
           "id": {
             "type": "integer",
@@ -507,6 +590,7 @@
           "title",
           "source",
           "hdr",
+          "imax",
           "score"
         ],
         "properties": {
@@ -527,6 +611,9 @@
             "format": "int64"
           },
           "hdr": {
+            "type": "boolean"
+          },
+          "imax": {
             "type": "boolean"
           },
           "info_hash": {
@@ -577,6 +664,54 @@
             ]
           },
           "title": {
+            "type": "string"
+          }
+        }
+      },
+      "SubtitleCue": {
+        "type": "object",
+        "required": [
+          "start",
+          "end",
+          "text"
+        ],
+        "properties": {
+          "end": {
+            "type": "number",
+            "format": "double",
+            "description": "End time in seconds"
+          },
+          "start": {
+            "type": "number",
+            "format": "double",
+            "description": "Start time in seconds"
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "SubtitleTrack": {
+        "type": "object",
+        "required": [
+          "id",
+          "language",
+          "url",
+          "score"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Higher score = more likely to be in sync"
+          },
+          "url": {
             "type": "string"
           }
         }

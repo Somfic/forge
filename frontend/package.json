@@ -8,5 +8,6 @@
   "scripts": {
     "dev": "bun --filter '*' dev",
     "build": "bun --filter '*' build"
-  }
+  },
+  "devDependencies": {}
 }

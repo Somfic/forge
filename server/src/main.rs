@@ -25,6 +25,7 @@ async fn main_wrapper() -> Result<()> {
         .init();
 
     let config = Config::from_file("spine.toml")?;
+    let dev = std::env::args().any(|a| a == "--dev");
 
-    Platform::new(config, modules()).run().await
+    Platform::new(config, modules()).dev(dev).run().await
 }

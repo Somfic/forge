@@ -7,6 +7,12 @@ pub struct MoviesConfig {
     pub stremio_url: String,
     #[serde(default = "default_stream_sources")]
     pub stream_sources: Vec<String>,
+    #[serde(default = "default_subtitle_languages")]
+    pub subtitle_languages: Vec<String>,
+}
+
+fn default_subtitle_languages() -> Vec<String> {
+    vec!["en".to_string()]
 }
 
 fn default_stremio_url() -> String {

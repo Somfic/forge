@@ -12,7 +12,8 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
-    "glow": "github:somfic/glow"
+    "glow": "github:somfic/glow",
+    "hls.js": "^1.6.15"
   },
   "trustedDependencies": [
     "@parcel/watcher",

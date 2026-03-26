@@ -1,6 +1,7 @@
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
-use axum::{Json, Router, routing::get};
+use axum::{Json, Router, response::IntoResponse, routing::get};
+use tokio::process::Child;
 use tokio::signal;
 use tower_http::services::ServeDir;
 use tracing::{Instrument, error, info, info_span, warn};
@@ -10,6 +11,7 @@ use crate::{AppContext, Config, HealthCheck, HealthStatus, LiveCheck, Module, Na
 pub struct Platform {
     config: Arc<Config>,
     modules: Vec<Box<dyn Module>>,
+    dev: bool,
 }
 
 impl Platform {
@@ -17,7 +19,13 @@ impl Platform {
         Platform {
             config: Arc::new(config),
             modules,
+            dev: false,
         }
+    }
+
+    pub fn dev(mut self, dev: bool) -> Self {
+        self.dev = dev;
+        self
     }
 
     pub async fn run(self) -> Result<()> {
@@ -27,12 +35,20 @@ impl Platform {
         let mut router = Router::new();
         let mut nav_entries = Vec::new();
         let mut health_checks: Vec<Box<dyn LiveCheck>> = Vec::new();
+        let mut dev_children: Vec<Child> = Vec::new();
 
         for module in &self.modules {
             let span = info_span!("module", module = module.name());
-            let result = init_module(module.as_ref(), &self.config, &event_bus, &http, router)
-                .instrument(span)
-                .await?;
+            let result = init_module(
+                module.as_ref(),
+                &self.config,
+                &event_bus,
+                &http,
+                self.dev,
+                router,
+            )
+            .instrument(span)
+            .await?;
 
             router = result.router;
 
@@ -42,12 +58,62 @@ impl Platform {
             if let Some(check) = result.live_check {
                 health_checks.push(check);
             }
+            if let Some(child) = result.dev_child {
+                dev_children.push(child);
+            }
         }
 
         {
             let span = info_span!("module", module = "Dashboard");
             let _enter = span.enter();
             router = router.merge(core_routes(nav_entries, health_checks));
+        }
+
+        // Set fallback LAST — dev proxy or dashboard static files
+        if self.dev {
+            let dev_proxies: Vec<(String, crate::proxy::DevProxy)> = self
+                .modules
+                .iter()
+                .filter_map(|m| {
+                    let port = m.dev_port()?;
+                    let prefix = format!("/{}", m.name()).to_lowercase();
+                    Some((prefix.clone(), crate::proxy::DevProxy::new(port, "")))
+                })
+                .collect();
+
+            if !dev_proxies.is_empty() {
+                let proxies = Arc::new(dev_proxies);
+                router = router.fallback(move |req: axum::extract::Request| {
+                    let proxies = proxies.clone();
+                    async move {
+                        let path = req.uri().path().to_string();
+                        for (prefix, proxy) in proxies.iter() {
+                            if path.starts_with(prefix) || path.starts_with("/@") {
+                                return crate::proxy::dev_proxy_handler(
+                                    axum::extract::State(proxy.clone()),
+                                    req,
+                                )
+                                .await
+                                .into_response();
+                            }
+                        }
+                        // Fallback: proxy to first dev server (for /@vite, /node_modules, etc.)
+                        if let Some((_, proxy)) = proxies.first() {
+                            return crate::proxy::dev_proxy_handler(
+                                axum::extract::State(proxy.clone()),
+                                req,
+                            )
+                            .await
+                            .into_response();
+                        }
+                        axum::response::Response::builder()
+                            .status(404)
+                            .body(axum::body::Body::from("Not found"))
+                            .unwrap()
+                    }
+                });
+            }
+        } else {
             router = mount_dashboard(router);
         }
 
@@ -58,6 +124,11 @@ impl Platform {
             .with_graceful_shutdown(shutdown_signal())
             .await?;
 
+        // Kill dev servers on shutdown
+        for mut child in dev_children {
+            let _ = child.kill().await;
+        }
+
         Ok(())
     }
 }
@@ -66,6 +137,7 @@ struct InitResult {
     router: Router,
     nav_entry: Option<NavEntry>,
     live_check: Option<Box<dyn LiveCheck>>,
+    dev_child: Option<Child>,
 }
 
 async fn init_module(
@@ -73,6 +145,7 @@ async fn init_module(
     config: &Arc<Config>,
     event_bus: &crate::EventBus,
     http: &crate::HttpClient,
+    dev: bool,
     mut router: Router,
 ) -> Result<InitResult> {
     let pool = crate::db::create_module_pool(config, module).await?;
@@ -96,22 +169,71 @@ async fn init_module(
 
     log_health_checks(&module.health_check(ctx.clone()).await?);
 
-    // Static frontend
-    let build_dir = PathBuf::from(format!(
-        "modules/{}/frontend/build",
-        module.name().to_lowercase()
-    ));
-    if build_dir.exists() {
-        let prefix = format!("/{}", module.name()).to_lowercase();
-        info!("mounting ui at {prefix}");
-        let fallback = tower_http::services::ServeFile::new(build_dir.join("index.html"));
-        let service = ServeDir::new(&build_dir)
-            .append_index_html_on_directories(true)
-            .fallback(fallback);
-        router = router.nest_service(&prefix, service);
+    // Frontend: dev proxy or static files
+    let prefix = format!("/{}", module.name()).to_lowercase();
+    let mut dev_child = None;
+    if dev {
+        if let Some(port) = module.dev_port() {
+            let frontend_dir =
+                PathBuf::from(format!("modules/{}/frontend", module.name().to_lowercase()));
+            if frontend_dir.join("package.json").exists() {
+                // Kill any existing process on the dev port
+                if let Ok(out) = tokio::process::Command::new("lsof")
+                    .args(["-ti", &format!(":{port}")])
+                    .output()
+                    .await
+                {
+                    let pids = String::from_utf8_lossy(&out.stdout);
+                    for pid in pids.split_whitespace() {
+                        let _ = tokio::process::Command::new("kill").arg(pid).output().await;
+                    }
+                    if !pids.is_empty() {
+                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    }
+                }
+
+                info!("starting vite dev server on port {port}");
+                match tokio::process::Command::new("bun")
+                    .args([
+                        "run",
+                        "dev",
+                        "--",
+                        "--port",
+                        &port.to_string(),
+                        "--strictPort",
+                    ])
+                    .current_dir(&frontend_dir)
+                    .stdout(std::process::Stdio::inherit())
+                    .stderr(std::process::Stdio::inherit())
+                    .kill_on_drop(true)
+                    .spawn()
+                {
+                    Ok(child) => dev_child = Some(child),
+                    Err(e) => warn!("failed to start vite dev server: {e}"),
+                }
+            }
+
+            info!("proxying ui at {prefix} → http://localhost:{port}");
+        }
     }
 
-    // API routes + OpenAPI spec
+    // Static frontend (non-dev only)
+    if !dev {
+        let build_dir = PathBuf::from(format!(
+            "modules/{}/frontend/build",
+            module.name().to_lowercase()
+        ));
+        if build_dir.exists() {
+            info!("mounting ui at {prefix}");
+            let fallback = tower_http::services::ServeFile::new(build_dir.join("index.html"));
+            let service = ServeDir::new(&build_dir)
+                .append_index_html_on_directories(true)
+                .fallback(fallback);
+            router = router.nest_service(&prefix, service);
+        }
+    }
+
+    // API routes + OpenAPI spec (always)
     let api_prefix = format!("/{}/api", module.name()).to_lowercase();
     info!("mounting api at {api_prefix}");
     let (api_router, api_spec) = module.routes().split_for_parts();
@@ -131,6 +253,7 @@ async fn init_module(
         router,
         nav_entry,
         live_check,
+        dev_child,
     })
 }
 

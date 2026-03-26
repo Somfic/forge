@@ -15,10 +15,10 @@ pub struct MediaItem {
     pub runtime: Option<i64>,
     pub rating: Option<f64>,
     pub poster_path: Option<String>,
-    pub backdrop_path: Option<String>,
+    pub backdrops: Vec<String>,
     pub genres: Vec<Genre>,
     pub videos: Vec<Video>,
-    pub images: Option<Images>,
+    pub logo_path: Option<String>,
     pub seasons: Option<Vec<Season>>,
 }
 
@@ -55,22 +55,6 @@ pub struct Video {
 }
 
 #[derive(Serialize, Clone, ToSchema)]
-pub struct Images {
-    pub posters: Vec<Image>,
-    pub backdrops: Vec<Image>,
-    pub logos: Vec<Image>,
-}
-
-#[derive(Serialize, Clone, ToSchema)]
-pub struct Image {
-    pub file_path: String,
-    pub width: i64,
-    pub height: i64,
-    pub iso_639_1: Option<String>,
-    pub vote_average: f64,
-}
-
-#[derive(Serialize, Clone, ToSchema)]
 pub struct Season {
     pub id: i64,
     pub season_number: i64,
@@ -78,6 +62,15 @@ pub struct Season {
     pub episode_count: i64,
     pub poster_path: Option<String>,
     pub air_date: Option<String>,
+    pub episodes: Vec<Episode>,
+}
+
+#[derive(Serialize, Clone, ToSchema)]
+pub struct Episode {
+    pub episode_number: i64,
+    pub name: String,
+    pub overview: Option<String>,
+    pub still_path: Option<String>,
 }
 
 // --- Raw TMDB response types (private) ---
@@ -173,6 +166,19 @@ struct TmdbSeason {
 }
 
 #[derive(Deserialize)]
+struct TmdbSeasonDetail {
+    episodes: Vec<TmdbEpisode>,
+}
+
+#[derive(Deserialize)]
+struct TmdbEpisode {
+    episode_number: i64,
+    name: String,
+    overview: Option<String>,
+    still_path: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct TmdbVideos {
     results: Vec<TmdbVideo>,
 }
@@ -220,22 +226,81 @@ fn convert_videos(videos: Option<TmdbVideos>) -> Vec<Video> {
         .unwrap_or_default()
 }
 
-fn convert_images(images: Option<TmdbImages>) -> Option<Images> {
-    images.map(|i| Images {
-        posters: i.posters.into_iter().map(convert_image).collect(),
-        backdrops: i.backdrops.into_iter().map(convert_image).collect(),
-        logos: i.logos.into_iter().map(convert_image).collect(),
-    })
+/// Pick the best poster: highest resolution, prefer no-language (clean) version
+fn pick_poster(images: &Option<TmdbImages>, fallback: Option<&str>) -> Option<String> {
+    if let Some(imgs) = images {
+        let mut posters: Vec<&TmdbImage> = imgs.posters.iter().collect();
+        if !posters.is_empty() {
+            posters.sort_by(|a, b| b.width.cmp(&a.width));
+            return Some(posters[0].file_path.clone());
+        }
+    }
+    fallback.map(|s| s.to_string())
 }
 
-fn convert_image(i: TmdbImage) -> Image {
-    Image {
-        file_path: i.file_path,
-        width: i.width,
-        height: i.height,
-        iso_639_1: i.iso_639_1,
-        vote_average: i.vote_average,
+/// Pick backdrops: filter ≥1080p, deduplicate, weighted shuffle by votes
+fn pick_backdrops(images: &Option<TmdbImages>, fallback: Option<&str>) -> Vec<String> {
+    let mut paths: Vec<String> = Vec::new();
+    if let Some(imgs) = images {
+        use std::collections::HashSet;
+
+        // Filter: ≥1080p width, no-text preferred, deduplicate
+        let mut seen = HashSet::new();
+        let mut candidates: Vec<&TmdbImage> = imgs
+            .backdrops
+            .iter()
+            .filter(|b| b.width >= 1920)
+            .filter(|b| b.iso_639_1.is_none()) // No text overlays
+            .filter(|b| seen.insert(&b.file_path))
+            .collect();
+
+        // Weighted shuffle: use vote_average as weight for randomized ordering
+        // Higher voted images are more likely to appear earlier
+        use std::hash::{Hash, Hasher};
+        let seed = {
+            let mut h = std::hash::DefaultHasher::new();
+            std::time::SystemTime::now().hash(&mut h);
+            h.finish()
+        };
+        candidates.sort_by(|a, b| {
+            let wa = a.vote_average + pseudo_rand(seed, &a.file_path) * 2.0;
+            let wb = b.vote_average + pseudo_rand(seed, &b.file_path) * 2.0;
+            wb.partial_cmp(&wa).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        paths.extend(candidates.iter().map(|b| b.file_path.clone()));
     }
+    // If images had no backdrops, use the main backdrop_path as fallback
+    if paths.is_empty() {
+        if let Some(p) = fallback {
+            paths.push(p.to_string());
+        }
+    }
+    paths
+}
+
+/// Deterministic pseudo-random value 0..1 from a seed and a string key
+fn pseudo_rand(seed: u64, key: &str) -> f64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::hash::DefaultHasher::new();
+    seed.hash(&mut h);
+    key.hash(&mut h);
+    (h.finish() % 10000) as f64 / 10000.0
+}
+
+/// Pick the best logo: highest resolution English one, fallback to highest resolution overall
+fn pick_logo(images: &Option<TmdbImages>) -> Option<String> {
+    let imgs = images.as_ref()?;
+    let mut logos: Vec<&TmdbImage> = imgs.logos.iter().collect();
+    if logos.is_empty() {
+        return None;
+    }
+    logos.sort_by(|a, b| b.width.cmp(&a.width));
+    logos
+        .iter()
+        .find(|l| l.iso_639_1.as_deref() == Some("en"))
+        .or_else(|| logos.first())
+        .map(|l| l.file_path.clone())
 }
 
 impl From<TmdbMovie> for MediaItem {
@@ -250,11 +315,11 @@ impl From<TmdbMovie> for MediaItem {
             release_date: m.release_date,
             runtime: m.runtime,
             rating: m.vote_average,
-            poster_path: m.poster_path,
-            backdrop_path: m.backdrop_path,
+            poster_path: pick_poster(&m.images, m.poster_path.as_deref()),
+            backdrops: pick_backdrops(&m.images, m.backdrop_path.as_deref()),
             genres: m.genres,
             videos: convert_videos(m.videos),
-            images: convert_images(m.images),
+            logo_path: pick_logo(&m.images),
             seasons: None,
         }
     }
@@ -272,13 +337,14 @@ impl From<TmdbTv> for MediaItem {
             release_date: t.first_air_date,
             runtime: t.episode_run_time.and_then(|r| r.first().copied()),
             rating: t.vote_average,
-            poster_path: t.poster_path,
-            backdrop_path: t.backdrop_path,
+            poster_path: pick_poster(&t.images, t.poster_path.as_deref()),
+            backdrops: pick_backdrops(&t.images, t.backdrop_path.as_deref()),
             genres: t.genres,
             videos: convert_videos(t.videos),
-            images: convert_images(t.images),
+            logo_path: pick_logo(&t.images),
             seasons: t.seasons.map(|s| {
                 s.into_iter()
+                    .filter(|s| s.season_number > 0) // Exclude "Specials" (season 0)
                     .map(|s| Season {
                         id: s.id,
                         season_number: s.season_number,
@@ -286,6 +352,7 @@ impl From<TmdbTv> for MediaItem {
                         episode_count: s.episode_count,
                         poster_path: s.poster_path,
                         air_date: s.air_date,
+                        episodes: vec![],
                     })
                     .collect()
             }),
@@ -350,10 +417,49 @@ impl TmdbClient {
         let res = self.client.get(&url).send().await?.error_for_status()?;
         let body = res.text().await?;
 
-        let item = match media_type {
+        let mut item: MediaItem = match media_type {
             MediaType::Movie => json::from_str::<TmdbMovie>(&body)?.into(),
             MediaType::Tv => json::from_str::<TmdbTv>(&body)?.into(),
         };
+
+        // Fetch episode details for each season in parallel
+        if media_type == MediaType::Tv {
+            if let Some(ref mut seasons) = item.seasons {
+                let futs: Vec<_> = seasons
+                    .iter()
+                    .map(|s| self.fetch_season_episodes(id, s.season_number))
+                    .collect();
+                let results = futures::future::join_all(futs).await;
+                for (season, episodes) in seasons.iter_mut().zip(results) {
+                    season.episodes = episodes.unwrap_or_default();
+                }
+            }
+        }
+
         Ok(item)
+    }
+
+    async fn fetch_season_episodes(
+        &self,
+        tv_id: i64,
+        season_number: i64,
+    ) -> forge::Result<Vec<Episode>> {
+        let url = format!(
+            "https://api.themoviedb.org/3/tv/{}/season/{}?api_key={}",
+            tv_id, season_number, self.api_key
+        );
+        let res = self.client.get(&url).send().await?.error_for_status()?;
+        let body = res.text().await?;
+        let detail: TmdbSeasonDetail = json::from_str(&body)?;
+        Ok(detail
+            .episodes
+            .into_iter()
+            .map(|e| Episode {
+                episode_number: e.episode_number,
+                name: e.name,
+                overview: e.overview,
+                still_path: e.still_path,
+            })
+            .collect())
     }
 }

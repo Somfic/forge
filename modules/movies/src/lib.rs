@@ -5,6 +5,7 @@ use utoipa_axum::router::OpenApiRouter;
 mod config;
 mod routes;
 mod streams;
+mod subtitles;
 mod tmdb;
 mod torrentio;
 
@@ -33,6 +34,10 @@ mod tests {
 impl Module for MoviesModule {
     fn name(&self) -> &'static str {
         "Movies"
+    }
+
+    fn dev_port(&self) -> Option<u16> {
+        Some(5174)
     }
 
     fn routes(&self) -> OpenApiRouter<AppContext> {

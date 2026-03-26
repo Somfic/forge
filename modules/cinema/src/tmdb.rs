@@ -22,7 +22,7 @@ pub struct MediaItem {
     pub seasons: Option<Vec<Season>>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, ToSchema)]
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaType {
     Movie,
@@ -328,7 +328,7 @@ impl From<TmdbMovie> for MediaItem {
             media_type: MediaType::Movie,
             title: m.title,
             overview: m.overview,
-            tagline: m.tagline,
+            tagline: m.tagline.map(|t| t.trim_end_matches('.').to_string()),
             release_date: m.release_date,
             runtime: m.runtime,
             rating: m.vote_average,
@@ -350,7 +350,7 @@ impl From<TmdbTv> for MediaItem {
             media_type: MediaType::Tv,
             title: t.name,
             overview: t.overview,
-            tagline: t.tagline,
+            tagline: t.tagline.map(|t| t.trim_end_matches('.').to_string()),
             release_date: t.first_air_date,
             runtime: t.episode_run_time.and_then(|r| r.first().copied()),
             rating: t.vote_average,
@@ -407,19 +407,76 @@ impl TmdbClient {
     }
 
     pub async fn search(&self, query: &str) -> forge::Result<Vec<SearchResult>> {
-        let url = format!(
+        // Normalize hyphens to periods (e.g. "wall-e" → "wall.e" matches "WALL·E")
+        let query = query.replace('-', ".");
+        let encoded = urlencoding::encode(&query);
+        let multi_url = format!(
             "https://api.themoviedb.org/3/search/multi?api_key={}&query={}",
-            self.api_key,
-            urlencoding::encode(query)
+            self.api_key, encoded
         );
-        let res = self.client.get(&url).send().await?.error_for_status()?;
-        let body = res.text().await?;
-        let data: TmdbMultiSearchResults = json::from_str(&body)?;
-        Ok(data
-            .results
-            .into_iter()
-            .filter_map(|r| r.into_search_result(None))
-            .collect())
+        let movie_url = format!(
+            "https://api.themoviedb.org/3/search/movie?api_key={}&query={}",
+            self.api_key, encoded
+        );
+        let tv_url = format!(
+            "https://api.themoviedb.org/3/search/tv?api_key={}&query={}",
+            self.api_key, encoded
+        );
+
+        let (multi, movies, tv) = futures::future::join3(
+            self.client.get(&multi_url).send(),
+            self.client.get(&movie_url).send(),
+            self.client.get(&tv_url).send(),
+        ).await;
+
+        let mut seen = std::collections::HashSet::new();
+        let mut results = Vec::new();
+
+        // Multi-search results first (primary)
+        if let Ok(res) = multi {
+            if let Ok(body) = res.text().await {
+                if let Ok(data) = json::from_str::<TmdbMultiSearchResults>(&body) {
+                    for r in data.results {
+                        if let Some(sr) = r.into_search_result(None) {
+                            seen.insert((sr.media_type.clone(), sr.id));
+                            results.push(sr);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Movie-specific results (catches things multi-search misses)
+        if let Ok(res) = movies {
+            if let Ok(body) = res.text().await {
+                if let Ok(data) = json::from_str::<TmdbMultiSearchResults>(&body) {
+                    for r in data.results {
+                        if let Some(sr) = r.into_search_result(Some(MediaType::Movie)) {
+                            if seen.insert((sr.media_type.clone(), sr.id)) {
+                                results.push(sr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // TV-specific results
+        if let Ok(res) = tv {
+            if let Ok(body) = res.text().await {
+                if let Ok(data) = json::from_str::<TmdbMultiSearchResults>(&body) {
+                    for r in data.results {
+                        if let Some(sr) = r.into_search_result(Some(MediaType::Tv)) {
+                            if seen.insert((sr.media_type.clone(), sr.id)) {
+                                results.push(sr);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(results)
     }
 
     pub async fn details(&self, media_type: MediaType, id: i64) -> forge::Result<MediaItem> {

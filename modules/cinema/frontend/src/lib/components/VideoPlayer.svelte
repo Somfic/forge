@@ -20,6 +20,9 @@
 		score: number;
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	type StreamOption = any;
+
 	let {
 		src,
 		subtitles = [],
@@ -28,9 +31,12 @@
 		topline,
 		titleImage,
 		subtitleTracks = [],
+		streams = [],
+		activeStreamHash,
 		onClose,
 		onSubtitleSelect,
 		onSubtitleOff,
+		onStreamSelect,
 		loadingSubtitles = false,
 		activeTrackUrl,
 		accent,
@@ -46,9 +52,12 @@
 		topline?: string;
 		titleImage?: string;
 		subtitleTracks?: SubtitleTrack[];
+		streams?: StreamOption[];
+		activeStreamHash?: string;
 		onClose?: () => void;
 		onSubtitleSelect?: (track: SubtitleTrack) => void;
 		onSubtitleOff?: () => void;
+		onStreamSelect?: (stream: StreamOption) => void;
 		loadingSubtitles?: boolean;
 		activeTrackUrl?: string;
 		accent?: string;
@@ -74,6 +83,33 @@
 	let isFullscreen = $state(false);
 	let subtitleMenuOpen = $state(false);
 	let audioMenuOpen = $state(false);
+	let resolutionMenuOpen = $state(false);
+	let streamMenuOpen = $state(false);
+
+	const activeResolution = $derived(
+		streams.find((s: StreamOption) => s.info_hash === activeStreamHash)
+			?.resolution ?? null,
+	);
+
+	const resolutions = $derived.by(() => {
+		const seen = new Set<string>();
+		const result: string[] = [];
+		for (const s of streams) {
+			const res = s.resolution;
+			if (res && !seen.has(res)) {
+				seen.add(res);
+				result.push(res);
+			}
+		}
+		const order: Record<string, number> = {
+			"4K": 4,
+			"2160p": 4,
+			"1080p": 3,
+			"720p": 2,
+			"480p": 1,
+		};
+		return result.sort((a, b) => (order[b] ?? 0) - (order[a] ?? 0));
+	});
 
 	interface AudioTrack {
 		id: number;
@@ -217,6 +253,8 @@
 				controlsVisible = false;
 				subtitleMenuOpen = false;
 				audioMenuOpen = false;
+				streamMenuOpen = false;
+				resolutionMenuOpen = false;
 				cursorHidden = true;
 			}, 3000);
 		}
@@ -236,8 +274,16 @@
 				break;
 			case "Escape":
 				e.preventDefault();
-				if (subtitleMenuOpen) {
+				if (
+					subtitleMenuOpen ||
+					audioMenuOpen ||
+					streamMenuOpen ||
+					resolutionMenuOpen
+				) {
 					subtitleMenuOpen = false;
+					audioMenuOpen = false;
+					streamMenuOpen = false;
+					resolutionMenuOpen = false;
 				} else if (onClose) {
 					onClose();
 				}
@@ -566,6 +612,109 @@
 			</div>
 
 			<div class="controls-right">
+				{#if resolutions.length > 1 && onStreamSelect}
+					<div class="subtitle-menu-anchor">
+						<Button
+							variant="ghost"
+							icon="Settings"
+							onclick={() => {
+								resolutionMenuOpen = !resolutionMenuOpen;
+								streamMenuOpen = false;
+								subtitleMenuOpen = false;
+								audioMenuOpen = false;
+							}}
+						/>
+						{#if resolutionMenuOpen}
+							<div
+								class="subtitle-menu"
+								transition:fade={{ duration: 100 }}
+							>
+								<div class="sub-section">
+									<span class="sub-label">Quality</span>
+									<div class="sub-options">
+										{#each resolutions as res}
+											<button
+												class="sub-option"
+												class:selected={res ===
+													activeResolution}
+												onclick={() => {
+													const best = streams.find(
+														(s: StreamOption) =>
+															s.resolution ===
+															res,
+													);
+													if (best)
+														onStreamSelect?.(best);
+													resolutionMenuOpen = false;
+												}}
+											>
+												{res}
+											</button>
+										{/each}
+									</div>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				{#if streams.length > 1 && onStreamSelect}
+					<div class="subtitle-menu-anchor">
+						<Button
+							variant="ghost"
+							icon="Radio"
+							onclick={() => {
+								streamMenuOpen = !streamMenuOpen;
+								resolutionMenuOpen = false;
+								subtitleMenuOpen = false;
+								audioMenuOpen = false;
+							}}
+						/>
+						{#if streamMenuOpen}
+							{@const filtered = streams
+								.filter(
+									(s: StreamOption) =>
+										s.resolution === activeResolution,
+								)
+								.slice(0, 5)}
+							<div
+								class="subtitle-menu"
+								transition:fade={{ duration: 100 }}
+							>
+								<div class="sub-section">
+									<span class="sub-label"
+										>{activeResolution} Sources</span
+									>
+									<div class="sub-options">
+										{#each filtered as stream}
+											<button
+												class="sub-option"
+												class:selected={stream.info_hash ===
+													activeStreamHash}
+												onclick={() => {
+													onStreamSelect?.(stream);
+													streamMenuOpen = false;
+												}}
+											>
+												<span
+													>{stream.codec ??
+														stream.source}{stream.size_display
+														? ` · ${stream.size_display}`
+														: ""}</span
+												>
+												{#if stream.seeders}<span
+														class="stream-meta"
+														>👤 {stream.seeders}</span
+													>{/if}
+											</button>
+										{/each}
+									</div>
+								</div>
+							</div>
+						{/if}
+					</div>
+				{/if}
+
 				{#if audioTracks.length > 1}
 					<div class="subtitle-menu-anchor">
 						<Button
@@ -574,6 +723,8 @@
 							onclick={() => {
 								audioMenuOpen = !audioMenuOpen;
 								subtitleMenuOpen = false;
+								streamMenuOpen = false;
+								resolutionMenuOpen = false;
 							}}
 						/>
 						{#if audioMenuOpen}
@@ -608,7 +759,7 @@
 						{/if}
 					</div>
 				{/if}
-				{#if subtitleTracks.length > 0}
+				{#if subtitleTracks.length > 0 || loadingSubtitles}
 					<div class="subtitle-menu-anchor">
 						<Button
 							variant="ghost"
@@ -619,6 +770,8 @@
 							onclick={() => {
 								subtitleMenuOpen = !subtitleMenuOpen;
 								audioMenuOpen = false;
+								streamMenuOpen = false;
+								resolutionMenuOpen = false;
 							}}
 						/>
 						{#if subtitleMenuOpen}
@@ -867,15 +1020,16 @@
 	.top-text {
 		display: flex;
 		flex-direction: column;
-		gap: 1px;
 	}
 
 	.top-topline {
 		color: rgba(255, 255, 255, 0.5);
 		font-size: 0.7rem;
+		line-height: 0.5rem;
 		font-weight: 500;
 		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 		letter-spacing: 0.02em;
+		margin: 0;
 	}
 
 	.top-title {
@@ -883,6 +1037,7 @@
 		font-size: 1rem;
 		font-weight: 600;
 		text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+		margin: 0;
 	}
 
 	/* ── Subtitles ── */
@@ -1146,7 +1301,9 @@
 	}
 
 	.sub-option {
-		display: block;
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
 		width: 100%;
 		padding: 5px 10px;
 		background: none;
@@ -1168,6 +1325,11 @@
 	.sub-option.selected {
 		color: #fff;
 		font-weight: 600;
+	}
+
+	.stream-meta {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.3);
 	}
 
 	.sub-divider {

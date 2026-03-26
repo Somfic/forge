@@ -12,15 +12,12 @@
 	} from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
 	import { Button, Icon, MediaCard, Pill, Text } from "glow";
-	import StreamList from "./StreamList.svelte";
 	import PlayCard from "./PlayCard.svelte";
 
 	let {
 		item,
-		streams = [],
 		loadingStreams = false,
 		onwatch,
-		onplay,
 		onselectseason,
 		onselectepisode,
 		similarItems = [],
@@ -28,10 +25,8 @@
 		onresume,
 	}: {
 		item: MediaItem;
-		streams?: Stream[];
 		loadingStreams?: boolean;
 		onwatch?: () => void;
-		onplay?: (stream: Stream) => void;
 		onselectseason?: (seasonNumber: number) => void;
 		onselectepisode?: (season: number, episode: number) => void;
 		similarItems?: SearchResult[];
@@ -41,8 +36,10 @@
 
 	let onWatchlist = $state(false);
 	let isFavorite = $state(false);
+	let isWatched = $state(false);
 	let watchlistLoading = $state(false);
 	let favoriteLoading = $state(false);
+	let watchedLoading = $state(false);
 
 	$effect(() => {
 		isInCollection("watchlist", item.media_type, item.id)
@@ -53,6 +50,11 @@
 		isInCollection("favorites", item.media_type, item.id)
 			.then((res) => {
 				isFavorite = res.data.in_collection;
+			})
+			.catch(() => {});
+		isInCollection("watched", item.media_type, item.id)
+			.then((res) => {
+				isWatched = res.data.in_collection;
 			})
 			.catch(() => {});
 	});
@@ -99,13 +101,13 @@
 	<div class="meta">
 		{#if item.release_date}
 			<Text as="span" variant="secondary" size="sm"
-				>{item.release_date.slice(0, 4)}</Text
-			>
+				>{item.release_date.slice(0, 4)}
+			</Text>
 		{/if}
 		{#if item.runtime}
 			<Text as="span" variant="secondary" size="sm"
-				>{item.runtime} min</Text
-			>
+				>{item.runtime} min
+			</Text>
 		{/if}
 		{#if item.seasons}
 			<Text as="span" variant="secondary" size="sm">
@@ -113,9 +115,9 @@
 			</Text>
 		{/if}
 		{#if item.rating}
-			<Text as="span" variant="secondary" size="sm"
-				>★ {item.rating.toFixed(1)}</Text
-			>
+			<Text as="span" variant="secondary" size="sm">
+				★ {item.rating.toFixed(1)}
+			</Text>
 		{/if}
 	</div>
 
@@ -146,11 +148,23 @@
 					(v) => (onWatchlist = v),
 				)}
 		/>
+		<Button
+			variant="ghost"
+			icon={isWatched ? "CircleCheck" : "Circle"}
+			loading={watchedLoading}
+			onclick={() =>
+				toggleCollection(
+					"watched",
+					isWatched,
+					(v) => (watchedLoading = v),
+					(v) => (isWatched = v),
+				)}
+		/>
 	</div>
 
-	{#if item.overview}
+	<!-- {#if item.overview}
 		<Text size="sm">{item.overview}</Text>
-	{/if}
+	{/if} -->
 
 	{#if item.media_type === "movie"}
 		<div class="play-row">
@@ -165,13 +179,13 @@
 							? imageUrl(item.backdrops[0], "w780")
 							: undefined}
 					label={item.title}
-					action={item.tagline?.replaceAll(".", "") ?? "Continue"}
+					action={item.tagline ?? "Continue"}
 					remaining="{remainingMin} min left"
 					progress={(resumeEntry.progress / resumeEntry.duration) *
 						100}
 					onclick={onresume}
 				/>
-			{:else if streams.length === 0 && onwatch}
+			{:else if onwatch}
 				<PlayCard
 					image={item.backdrops?.[1]
 						? imageUrl(item.backdrops[1], "w780")
@@ -179,19 +193,12 @@
 							? imageUrl(item.backdrops[0], "w780")
 							: undefined}
 					label={item.title}
-					action={loadingStreams
-						? "Finding streams..."
-						: (item.tagline?.replaceAll(".", "") ?? "Watch")}
+					action={item.tagline ?? "Watch"}
+					loading={loadingStreams}
 					onclick={onwatch}
 				/>
 			{/if}
 		</div>
-		{#if streams.length > 0 && onplay}
-			<div class="streams-section">
-				<Text weight="semibold" size="sm">Streams</Text>
-				<StreamList {streams} {onplay} />
-			</div>
-		{/if}
 	{/if}
 
 	{#if item.seasons?.length}
@@ -321,12 +328,6 @@
 		display: flex;
 		gap: 0.4rem;
 		flex-wrap: wrap;
-	}
-
-	.streams-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
 	}
 
 	@media (max-width: 768px) {

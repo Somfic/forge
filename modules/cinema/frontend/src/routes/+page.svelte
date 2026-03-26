@@ -20,6 +20,7 @@
 	let historyItems = $state<WatchHistoryItem[]>([]);
 	let watchlistItems = $state<CollectionItem[]>([]);
 	let favoriteItems = $state<CollectionItem[]>([]);
+	let watchedItems = $state<CollectionItem[]>([]);
 
 	// Load browse data on mount
 	$effect(() => {
@@ -31,6 +32,9 @@
 			.catch(() => {});
 		fetchCollection("favorites")
 			.then((res) => { favoriteItems = res.data; })
+			.catch(() => {});
+		fetchCollection("watched")
+			.then((res) => { watchedItems = res.data; })
 			.catch(() => {});
 		fetchTrending()
 			.then((res) => { trendingItems = res.data; })
@@ -80,16 +84,18 @@
 				<Heading level={2}>Continue Watching</Heading>
 				<div class="row">
 					{#each historyItems as item}
-						<MediaCard
-							title={item.title}
-							subtitle={item.season != null
-								? `S${item.season} E${item.episode} • ${progressPercent(item)}%`
-								: `${progressPercent(item)}%`}
-							src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
-							aspectRatio="2/3"
-							onclick={() =>
-								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
-						/>
+						{@const minLeft = Math.ceil((item.duration - item.progress) / 60)}
+						{@const pct = item.duration > 0 ? (item.progress / item.duration) * 100 : 0}
+						<div class="history-card" role="button" tabindex="0" onclick={() => (window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}>
+							<MediaCard
+								subtitle={item.media_type === "tv" && item.season > 0
+									? `S${item.season} E${item.episode} · ${minLeft} min left`
+									: `${minLeft} min left`}
+								src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
+								aspectRatio="2/3"
+							/>
+							<div class="history-progress" style="width: {pct}%"></div>
+						</div>
 					{/each}
 				</div>
 			</section>
@@ -148,6 +154,23 @@
 				</div>
 			</section>
 		{/if}
+
+		{#if watchedItems.length > 0}
+			<section>
+				<Heading level={2}>Watched</Heading>
+				<div class="row">
+					{#each watchedItems as item}
+						<MediaCard
+							title={item.title}
+							src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
+							aspectRatio="2/3"
+							onclick={() =>
+								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
+						/>
+					{/each}
+				</div>
+			</section>
+		{/if}
 	{:else if results.length > 0}
 		<div class="grid">
 			{#each results as item}
@@ -196,5 +219,21 @@
 	.row :global(> *) {
 		width: 160px;
 		flex-shrink: 0;
+	}
+
+	.history-card {
+		position: relative;
+		overflow: hidden;
+		border-radius: 10px;
+		cursor: pointer;
+	}
+
+	.history-progress {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		height: 3px;
+		background: var(--primary, #2563eb);
+		z-index: 1;
 	}
 </style>

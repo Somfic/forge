@@ -1,27 +1,20 @@
 <script lang="ts">
-	import type { Season, Stream, Episode } from "$lib/api.gen";
+	import type { Season, Episode } from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
 	import { Button, MediaCard, Text } from "glow";
-	import StreamList from "./StreamList.svelte";
 
 	let {
 		season,
 		episode,
 		showTitle,
-		streams = [],
-		loadingStreams = false,
 		onback,
 		onselectepisode,
-		onplay,
 	}: {
 		season: Season;
 		episode: Episode;
 		showTitle: string;
-		streams?: Stream[];
-		loadingStreams?: boolean;
 		onback: () => void;
 		onselectepisode: (season: number, episode: number) => void;
-		onplay?: (stream: Stream) => void;
 	} = $props();
 </script>
 
@@ -48,17 +41,6 @@
 
 	{#if episode.overview}
 		<Text size="sm">{episode.overview}</Text>
-	{/if}
-
-	{#if loadingStreams}
-		<Text variant="muted" size="sm">Finding streams...</Text>
-	{/if}
-
-	{#if streams.length > 0 && onplay}
-		<div class="streams-section">
-			<Text weight="semibold" size="sm">Streams</Text>
-			<StreamList {streams} {onplay} />
-		</div>
 	{/if}
 </div>
 
@@ -104,11 +86,5 @@
 		display: flex;
 		gap: 0.75rem;
 		align-items: center;
-	}
-
-	.streams-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
 	}
 </style>

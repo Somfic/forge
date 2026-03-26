@@ -7,6 +7,7 @@
 		action,
 		remaining,
 		progress,
+		loading = false,
 		onclick,
 	}: {
 		image?: string;
@@ -14,6 +15,7 @@
 		action: string;
 		remaining?: string;
 		progress?: number;
+		loading?: boolean;
 		onclick: () => void;
 	} = $props();
 </script>
@@ -23,8 +25,8 @@
 		<img class="bg" src={image} alt="" />
 	{/if}
 	<div class="overlay"></div>
-	<div class="play-icon">
-		<Icon name="Play" size={36} />
+	<div class="play-icon" class:spinning={loading}>
+		<Icon name={loading ? "LoaderCircle" : "Play"} size={36} />
 	</div>
 	<div class="content">
 		<div class="left">
@@ -45,13 +47,13 @@
 <style>
 	.card {
 		position: relative;
-		height: 200px;
+		width: 1000px;
 		aspect-ratio: 16/9;
 		min-width: 0;
 		border-radius: 10px;
 		overflow: hidden;
 		background: var(--bg-surface, #1a1a2e);
-		border: 1px solid rgba(255, 255, 255, 0.08);
+		border: none;
 		cursor: pointer;
 		padding: 0;
 		color: inherit;
@@ -89,8 +91,22 @@
 		background: rgba(0, 0, 0, 0.3);
 	}
 
-	.card:hover .play-icon {
+	.card:hover .play-icon,
+	.play-icon.spinning {
 		opacity: 1;
+	}
+
+	.spinning :global(svg) {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.content {

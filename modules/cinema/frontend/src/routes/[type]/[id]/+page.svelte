@@ -75,7 +75,7 @@
 	const playerTopline = $derived(
 		item?.media_type === "tv" && selectedSeason !== null && selectedEpisode !== null
 			? `S${selectedSeason} E${selectedEpisode} · ${item?.title}`
-			: undefined,
+			: item?.tagline || undefined,
 	);
 
 	const episodeOverride = $derived(
@@ -183,11 +183,12 @@
 	}
 
 	// ── Stream loading ──
-	async function loadMovieStreams() {
+	async function loadAndPlayMovieStreams() {
 		if (!item) return;
 		loadingStreams = true;
 		try {
 			streams = (await movieStreams(item.id)).data;
+			if (streams.length > 0) play(streams[0]);
 		} catch (e: any) { error = e.message; }
 		finally { loadingStreams = false; }
 	}
@@ -197,11 +198,17 @@
 		loadingStreams = true;
 		try {
 			streams = (await tvStreams(item.id, season, episode)).data;
+			if (streams.length > 0) play(streams[0]);
 		} catch (e: any) { error = e.message; }
 		finally { loadingStreams = false; }
 	}
 
-	function resume() {
+	async function switchStream(stream: Stream) {
+		playerStartTime = playerTime;
+		play(stream, true);
+	}
+
+	async function resume() {
 		if (!resumeEntry?.info_hash || !item) return;
 		if (resumeEntry.season > 0) {
 			selectedSeason = resumeEntry.season;
@@ -212,6 +219,15 @@
 			info_hash: resumeEntry.info_hash,
 			file_idx: resumeEntry.file_idx,
 		} as Stream, true);
+
+		// Fetch streams in background so the stream switcher works
+		try {
+			if (item.media_type === "movie") {
+				streams = (await movieStreams(item.id)).data;
+			} else if (selectedSeason != null && selectedEpisode != null) {
+				streams = (await tvStreams(item.id, selectedSeason, selectedEpisode)).data;
+			}
+		} catch {}
 	}
 
 	// ── Player ──
@@ -220,9 +236,6 @@
 		if (!fromResume) playerStartTime = 0;
 		selectedStream = stream;
 		streamUrl = null;
-		subtitleTracks = [];
-		activeCues = [];
-		activeTrackUrl = undefined;
 
 		const u = new URL(window.location.href);
 		u.searchParams.set("hash", stream.info_hash);
@@ -345,12 +358,10 @@
 		<div class="page page-info">
 			<MediaInfo
 				{item}
-				{streams}
 				{loadingStreams}
 				{similarItems}
 				{resumeEntry}
-				onwatch={loadMovieStreams}
-				onplay={play}
+				onwatch={loadAndPlayMovieStreams}
 				onresume={resume}
 				onselectseason={selectSeason}
 				onselectepisode={selectEpisode}
@@ -376,11 +387,8 @@
 					season={activeSeason}
 					episode={activeEpisode}
 					showTitle={item.title}
-					{streams}
-					{loadingStreams}
 					onback={goBack}
 					onselectepisode={selectEpisode}
-					onplay={play}
 				/>
 			{/if}
 		</div>
@@ -400,6 +408,9 @@
 				{activeTrackUrl}
 				accent={accentColor}
 				startTime={playerStartTime}
+				{streams}
+				activeStreamHash={selectedStream?.info_hash}
+				onStreamSelect={switchStream}
 				bind:currentTime={playerTime}
 				bind:duration={playerDuration}
 				bind:paused={playerPaused}

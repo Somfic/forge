@@ -33,6 +33,7 @@
 		onSubtitleOff,
 		loadingSubtitles = false,
 		activeTrackUrl,
+		accent,
 		currentTime = $bindable(0),
 		duration = $bindable(0),
 		paused = $bindable(true),
@@ -49,6 +50,7 @@
 		onSubtitleOff?: () => void;
 		loadingSubtitles?: boolean;
 		activeTrackUrl?: string;
+		accent?: string;
 		currentTime?: number;
 		duration?: number;
 		paused?: boolean;
@@ -375,6 +377,7 @@
 	class="player"
 	class:fullscreen={isFullscreen}
 	class:cursor-hidden={cursorHidden}
+	style:--accent={accent ? `rgb(${accent})` : undefined}
 	bind:this={containerEl}
 	onmousemove={showControls}
 	onmouseenter={showControls}

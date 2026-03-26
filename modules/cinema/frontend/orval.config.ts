@@ -1,12 +1,12 @@
 import { defineConfig } from 'orval';
 
 export default defineConfig({
-	movies: {
+	cinema: {
 		input: { target: 'openapi.json' },
 		output: {
 			target: 'src/lib/api.gen.ts',
 			client: 'fetch',
-			baseUrl: '/movies/api',
+			baseUrl: '/cinema/api',
 		}
 	}
 });

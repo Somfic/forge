@@ -1,7 +1,7 @@
 import { movieDetails, tvDetails, startStream, type MediaType } from './api.gen';
 
 export function imageUrl(path: string, size: string = 'original'): string {
-	return `/movies/api/image/${size}${path}`;
+	return `/cinema/api/image/${size}${path}`;
 }
 
 export async function getDetails(type: MediaType, id: number) {

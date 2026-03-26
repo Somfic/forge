@@ -166,7 +166,7 @@ export const getMovieDetailsUrl = (id: number,) => {
 
 
 
-  return `/movies/api/movie/${id}`
+  return `/cinema/api/movie/${id}`
 }
 
 export const movieDetails = async (id: number, options?: RequestInit): Promise<movieDetailsResponse> => {
@@ -212,7 +212,7 @@ export const getSearchUrl = (params: SearchParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/movies/api/search?${stringifiedParams}` : `/movies/api/search`
+  return stringifiedParams.length > 0 ? `/cinema/api/search?${stringifiedParams}` : `/cinema/api/search`
 }
 
 export const search = async (params: SearchParams, options?: RequestInit): Promise<searchResponse> => {
@@ -251,7 +251,7 @@ export const getMovieStreamsUrl = (id: number,) => {
 
 
 
-  return `/movies/api/streams/movie/${id}`
+  return `/cinema/api/streams/movie/${id}`
 }
 
 export const movieStreams = async (id: number, options?: RequestInit): Promise<movieStreamsResponse> => {
@@ -291,7 +291,7 @@ export const getStartStreamUrl = (infoHash: string,
 
 
 
-  return `/movies/api/streams/start/${infoHash}/${fileIdx}`
+  return `/cinema/api/streams/start/${infoHash}/${fileIdx}`
 }
 
 export const startStream = async (infoHash: string,
@@ -333,7 +333,7 @@ export const getTvStreamsUrl = (id: number,
 
 
 
-  return `/movies/api/streams/tv/${id}/${season}/${episode}`
+  return `/cinema/api/streams/tv/${id}/${season}/${episode}`
 }
 
 export const tvStreams = async (id: number,
@@ -381,7 +381,7 @@ export const getSubtitleCuesUrl = (params: SubtitleCuesParams,) => {
 
   const stringifiedParams = normalizedParams.toString();
 
-  return stringifiedParams.length > 0 ? `/movies/api/subtitles/cues?${stringifiedParams}` : `/movies/api/subtitles/cues`
+  return stringifiedParams.length > 0 ? `/cinema/api/subtitles/cues?${stringifiedParams}` : `/cinema/api/subtitles/cues`
 }
 
 export const subtitleCues = async (params: SubtitleCuesParams, options?: RequestInit): Promise<subtitleCuesResponse> => {
@@ -420,7 +420,7 @@ export const getMovieSubtitlesUrl = (id: number,) => {
 
 
 
-  return `/movies/api/subtitles/movie/${id}`
+  return `/cinema/api/subtitles/movie/${id}`
 }
 
 export const movieSubtitles = async (id: number, options?: RequestInit): Promise<movieSubtitlesResponse> => {
@@ -461,7 +461,7 @@ export const getTvSubtitlesUrl = (id: number,
 
 
 
-  return `/movies/api/subtitles/tv/${id}/${season}/${episode}`
+  return `/cinema/api/subtitles/tv/${id}/${season}/${episode}`
 }
 
 export const tvSubtitles = async (id: number,
@@ -502,7 +502,7 @@ export const getTvDetailsUrl = (id: number,) => {
 
 
 
-  return `/movies/api/tv/${id}`
+  return `/cinema/api/tv/${id}`
 }
 
 export const tvDetails = async (id: number, options?: RequestInit): Promise<tvDetailsResponse> => {

@@ -11,7 +11,7 @@ fn main() {
 
     // Re-run if any frontend source files change
     println!("cargo:rerun-if-changed=../frontend/apps");
-    println!("cargo:rerun-if-changed=../modules/movies/frontend/src");
+    println!("cargo:rerun-if-changed=../modules/cinema/frontend/src");
 
     // Install deps if needed
     let node_modules = frontend_dir.join("node_modules");

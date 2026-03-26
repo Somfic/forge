@@ -10,7 +10,7 @@ use utoipa_axum::routes;
 
 use forge::AppContext;
 
-use crate::config::MoviesConfig;
+use crate::config::CinemaConfig;
 use crate::streams::Stream;
 use crate::subtitles::{SubtitleCue, SubtitleTrack};
 use crate::tmdb::{MediaItem, MediaType, SearchResult, TmdbClient};
@@ -43,7 +43,7 @@ async fn search(
     State(ctx): State<AppContext>,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<Vec<SearchResult>>, AppError> {
-    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let results = tmdb.search(&params.q).await?;
     Ok(Json(results))
@@ -54,7 +54,7 @@ async fn movie_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
 ) -> Result<Json<MediaItem>, AppError> {
-    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Movie, id).await?;
     Ok(Json(item))
@@ -65,7 +65,7 @@ async fn tv_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
 ) -> Result<Json<MediaItem>, AppError> {
-    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Tv, id).await?;
     Ok(Json(item))
@@ -76,7 +76,7 @@ async fn movie_streams(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<Stream>>, AppError> {
-    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
 
     // Get IMDB ID from TMDB
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
@@ -96,7 +96,7 @@ async fn tv_streams(
     State(ctx): State<AppContext>,
     Path((id, season, episode)): Path<(i64, i64, i64)>,
 ) -> Result<Json<Vec<Stream>>, AppError> {
-    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
 
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Tv, id).await?;
@@ -122,7 +122,7 @@ async fn start_stream(
     State(ctx): State<AppContext>,
     Path((info_hash, file_idx)): Path<(String, i64)>,
 ) -> Result<Json<StartStreamResponse>, AppError> {
-    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
     let torrentio = StremioClient::new(ctx.http.clone(), config.stremio_url.clone());
     let url = torrentio.start(&info_hash, file_idx).await?;
     Ok(Json(StartStreamResponse { url }))
@@ -133,7 +133,7 @@ async fn movie_subtitles(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<SubtitleTrack>>, AppError> {
-    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Movie, id).await?;
     let imdb_id = item
@@ -150,7 +150,7 @@ async fn tv_subtitles(
     State(ctx): State<AppContext>,
     Path((id, season, episode)): Path<(i64, i64, i64)>,
 ) -> Result<Json<Vec<SubtitleTrack>>, AppError> {
-    let config = ctx.config.module_config::<MoviesConfig>("movies")?;
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Tv, id).await?;
     let imdb_id = item

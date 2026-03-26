@@ -1,4 +1,4 @@
-use crate::config::MoviesConfig;
+use crate::config::CinemaConfig;
 use forge::{HttpClient, json};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -254,19 +254,25 @@ fn pick_backdrops(images: &Option<TmdbImages>, fallback: Option<&str>) -> Vec<St
             .filter(|b| seen.insert(&b.file_path))
             .collect();
 
-        // Weighted shuffle: use vote_average as weight for randomized ordering
-        // Higher voted images are more likely to appear earlier
-        use std::hash::{Hash, Hasher};
-        let seed = {
-            let mut h = std::hash::DefaultHasher::new();
-            std::time::SystemTime::now().hash(&mut h);
-            h.finish()
-        };
+        // Sort by votes descending — first element is always the most upvoted
         candidates.sort_by(|a, b| {
-            let wa = a.vote_average + pseudo_rand(seed, &a.file_path) * 2.0;
-            let wb = b.vote_average + pseudo_rand(seed, &b.file_path) * 2.0;
-            wb.partial_cmp(&wa).unwrap_or(std::cmp::Ordering::Equal)
+            b.vote_average.partial_cmp(&a.vote_average).unwrap_or(std::cmp::Ordering::Equal)
         });
+
+        // Shuffle the rest (index 1+) with weighted randomness
+        if candidates.len() > 1 {
+            use std::hash::{Hash, Hasher};
+            let seed = {
+                let mut h = std::hash::DefaultHasher::new();
+                std::time::SystemTime::now().hash(&mut h);
+                h.finish()
+            };
+            candidates[1..].sort_by(|a, b| {
+                let wa = a.vote_average + pseudo_rand(seed, &a.file_path) * 2.0;
+                let wb = b.vote_average + pseudo_rand(seed, &b.file_path) * 2.0;
+                wb.partial_cmp(&wa).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        }
 
         paths.extend(candidates.iter().map(|b| b.file_path.clone()));
     }
@@ -368,7 +374,7 @@ pub struct TmdbClient {
 }
 
 impl TmdbClient {
-    pub fn new(config: &MoviesConfig, client: HttpClient) -> Self {
+    pub fn new(config: &CinemaConfig, client: HttpClient) -> Self {
         Self {
             api_key: config.tmdb_api_key.clone(),
             client,

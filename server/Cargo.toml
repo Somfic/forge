@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 forge = { path = "../core" }
-movies = { path = "../modules/movies" }
+cinema = { path = "../modules/cinema" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

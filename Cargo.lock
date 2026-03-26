@@ -208,6 +208,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "cinema"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "forge",
+ "futures",
+ "serde",
+ "sqlx",
+ "tracing",
+ "urlencoding",
+ "utoipa",
+ "utoipa-axum",
+]
+
+[[package]]
 name = "cmake"
 version = "0.1.57"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -474,8 +489,8 @@ dependencies = [
 name = "forge_server"
 version = "0.1.0"
 dependencies = [
+ "cinema",
  "forge",
- "movies",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1164,21 +1179,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "movies"
-version = "0.1.0"
-dependencies = [
- "axum",
- "forge",
- "futures",
- "serde",
- "sqlx",
- "tracing",
- "urlencoding",
- "utoipa",
- "utoipa-axum",
 ]
 
 [[package]]

@@ -1,8 +1,8 @@
 use forge::{Config, Platform, Result};
-use movies::MoviesModule;
+use cinema::CinemaModule;
 
 fn modules() -> Vec<Box<dyn forge::Module>> {
-    vec![Box::new(MoviesModule)]
+    vec![Box::new(CinemaModule)]
 }
 
 #[tokio::main]

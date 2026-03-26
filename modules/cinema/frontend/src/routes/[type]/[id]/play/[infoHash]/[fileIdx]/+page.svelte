@@ -102,7 +102,7 @@
 	}
 
 	function close() {
-		goto(`/movies/${mediaType}/${mediaId}`);
+		goto(`/cinema/${mediaType}/${mediaId}`);
 	}
 </script>
 

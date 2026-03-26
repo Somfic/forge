@@ -9,7 +9,7 @@ mod subtitles;
 mod tmdb;
 mod torrentio;
 
-pub struct MoviesModule;
+pub struct CinemaModule;
 
 /// Generate the OpenAPI spec as JSON (used by build scripts and tests)
 pub fn openapi_spec() -> utoipa::openapi::OpenApi {
@@ -31,9 +31,9 @@ mod tests {
 }
 
 #[module]
-impl Module for MoviesModule {
+impl Module for CinemaModule {
     fn name(&self) -> &'static str {
-        "Movies"
+        "Cinema"
     }
 
     fn dev_port(&self) -> Option<u16> {
@@ -49,13 +49,13 @@ impl Module for MoviesModule {
     }
 
     async fn on_start(&self, ctx: AppContext) -> forge::Result<()> {
-        let config = ctx.config.module_config::<config::MoviesConfig>("movies")?;
+        let config = ctx.config.module_config::<config::CinemaConfig>("cinema")?;
 
         Ok(())
     }
 
     async fn health_check(&self, ctx: AppContext) -> forge::Result<Vec<forge::HealthCheck>> {
-        let config = ctx.config.module_config::<config::MoviesConfig>("movies")?;
+        let config = ctx.config.module_config::<config::CinemaConfig>("cinema")?;
         let client = tmdb::TmdbClient::new(&config, ctx.http.clone());
 
         let start = std::time::Instant::now();

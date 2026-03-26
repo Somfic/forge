@@ -29,6 +29,7 @@
 	let loadingStreams = $state(false);
 	let error = $state<string | null>(null);
 	let backdropColor = $state("9, 10, 19");
+	let accentColor = $state("228, 228, 231");
 
 	// ── Player state ──
 	let selectedStream = $state<Stream | null>(null);
@@ -242,9 +243,10 @@
 		<CyclingBackdrop
 			images={backdropUrls}
 			overlay={slideIndex === 1 || selectedStream !== null}
-			override={slideIndex === 2 ? episodeOverride : undefined}
+			override={selectedStream ? backdropUrls[0] : slideIndex === 2 ? episodeOverride : undefined}
 			position={backdropPosition}
 			bind:dominantColor={backdropColor}
+			bind:accentColor
 		/>
 	</div>
 	<div class="gradient-right" class:hidden={slideIndex > 0 || selectedStream !== null} bind:this={gradientRightEl}></div>
@@ -305,6 +307,7 @@
 				{subtitleTracks}
 				{loadingSubtitles}
 				{activeTrackUrl}
+				accent={accentColor}
 				onClose={stopPlaying}
 				onSubtitleSelect={selectSubtitleTrack}
 				onSubtitleOff={disableSubtitles}

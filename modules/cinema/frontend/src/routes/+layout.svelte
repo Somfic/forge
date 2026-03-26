@@ -9,7 +9,7 @@
 <style>
 	@font-face {
 		font-family: 'Subtitle';
-		src: url('/movies/fonts/Helvetica Neue 67 Medium Condensed.otf') format('opentype');
+		src: url('/cinema/fonts/Helvetica Neue 67 Medium Condensed.otf') format('opentype');
 		font-display: swap;
 	}
 

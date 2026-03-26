@@ -57,7 +57,7 @@
 						: ""}
 					aspectRatio="2/3"
 					onclick={() =>
-						(window.location.href = `/movies/${item.media_type}/${item.id}`)}
+						(window.location.href = `/cinema/${item.media_type}/${item.id}`)}
 				/>
 			{/each}
 		</div>

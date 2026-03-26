@@ -9,6 +9,7 @@
 		override,
 		position = "center center",
 		dominantColor = $bindable("9, 10, 19"),
+		accentColor = $bindable("228, 228, 231"),
 	}: {
 		images: string[];
 		interval?: number;
@@ -16,6 +17,7 @@
 		override?: string;
 		position?: string;
 		dominantColor?: string;
+		accentColor?: string;
 	} = $props();
 
 	let layerAEl: HTMLDivElement;
@@ -38,33 +40,36 @@
 		});
 	}
 
-	function extractColor(img: HTMLImageElement): string {
+	function extractColor(img: HTMLImageElement): { dark: string; vibrant: string } {
 		try {
 			const canvas = document.createElement("canvas");
 			canvas.width = 32;
 			canvas.height = 32;
 			const ctx = canvas.getContext("2d");
-			if (!ctx) return "9, 10, 19";
+			if (!ctx) return { dark: "9, 10, 19", vibrant: "228, 228, 231" };
 			ctx.drawImage(img, 0, 0, 32, 32);
 			const data = ctx.getImageData(0, 0, 32, 32).data;
-			let r = 0,
-				g = 0,
-				b = 0,
-				count = 0;
+			let r = 0, g = 0, b = 0, count = 0;
+			let vr = 0, vg = 0, vb = 0, vcount = 0;
 			for (let i = 0; i < data.length; i += 4) {
 				const br = data[i] + data[i + 1] + data[i + 2];
 				if (br > 60 && br < 600) {
-					r += data[i];
-					g += data[i + 1];
-					b += data[i + 2];
-					count++;
+					r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
+				}
+				// For vibrant: pick saturated pixels
+				const max = Math.max(data[i], data[i + 1], data[i + 2]);
+				const min = Math.min(data[i], data[i + 1], data[i + 2]);
+				const sat = max > 0 ? (max - min) / max : 0;
+				if (sat > 0.2 && br > 80 && br < 600) {
+					vr += data[i]; vg += data[i + 1]; vb += data[i + 2]; vcount++;
 				}
 			}
-			if (!count) return "9, 10, 19";
 			const d = 0.35;
-			return `${Math.round((r / count) * d)}, ${Math.round((g / count) * d)}, ${Math.round((b / count) * d)}`;
+			const dark = count ? `${Math.round((r / count) * d)}, ${Math.round((g / count) * d)}, ${Math.round((b / count) * d)}` : "9, 10, 19";
+			const vibrant = vcount ? `${Math.round(vr / vcount)}, ${Math.round(vg / vcount)}, ${Math.round(vb / vcount)}` : "228, 228, 231";
+			return { dark, vibrant };
 		} catch {
-			return "9, 10, 19";
+			return { dark: "9, 10, 19", vibrant: "228, 228, 231" };
 		}
 	}
 
@@ -73,9 +78,10 @@
 		if (!layerAEl || !layerBEl) return;
 		try {
 			const img = await preloadImg(url);
-			const color = extractColor(img);
+			const { dark, vibrant } = extractColor(img);
 			queueMicrotask(() => {
-				dominantColor = color;
+				dominantColor = dark;
+				accentColor = vibrant;
 			});
 		} catch {}
 
@@ -131,8 +137,8 @@
 		if (override) {
 			preloadImg(override)
 				.then((img) => {
-					const color = extractColor(img);
-					queueMicrotask(() => { dominantColor = color; });
+					const { dark, vibrant } = extractColor(img);
+					queueMicrotask(() => { dominantColor = dark; accentColor = vibrant; });
 
 					const incoming = useOverrideA ? overrideAEl : overrideBEl;
 					const outgoing = useOverrideA ? overrideBEl : overrideAEl;

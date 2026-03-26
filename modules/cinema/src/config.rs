@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-pub struct MoviesConfig {
+pub struct CinemaConfig {
     pub tmdb_api_key: String,
     #[serde(default = "default_stremio_url")]
     pub stremio_url: String,

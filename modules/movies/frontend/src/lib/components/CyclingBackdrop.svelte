@@ -7,7 +7,7 @@
 		interval = 10000,
 		overlay = true,
 		override,
-		position = "center top",
+		position = "center center",
 		dominantColor = $bindable("9, 10, 19"),
 	}: {
 		images: string[];
@@ -173,10 +173,12 @@
 		left: -15%;
 		width: 130%;
 		height: 100%;
-		background-size: cover;
-		background-position: center top;
+		background-size: auto 100%;
+		background-position: center center;
 		opacity: 0;
-		transition: opacity 1.5s ease, transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+		transition:
+			opacity 1.5s ease,
+			transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.override {

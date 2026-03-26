@@ -1,5 +1,5 @@
-use forge::{Config, Platform, Result};
 use cinema::CinemaModule;
+use forge::{Config, Platform, Result};
 
 fn modules() -> Vec<Box<dyn forge::Module>> {
     vec![Box::new(CinemaModule)]

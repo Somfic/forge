@@ -52,9 +52,13 @@
 					<MediaCard
 						title={ep.name}
 						subtitle={`S${season.season_number} E${ep.episode_number}`}
-						src={ep.still_path ? imageUrl(ep.still_path, "w300") : ""}
+						src={ep.still_path ? imageUrl(ep.still_path) : ""}
 						aspectRatio="16/9"
-						onclick={() => onselectepisode(season.season_number, ep.episode_number)}
+						onclick={() =>
+							onselectepisode(
+								season.season_number,
+								ep.episode_number,
+							)}
 					/>
 				{/each}
 			</div>

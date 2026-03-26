@@ -34,6 +34,7 @@
 		loadingSubtitles = false,
 		activeTrackUrl,
 		accent,
+		startTime = 0,
 		currentTime = $bindable(0),
 		duration = $bindable(0),
 		paused = $bindable(true),
@@ -51,6 +52,7 @@
 		loadingSubtitles?: boolean;
 		activeTrackUrl?: string;
 		accent?: string;
+		startTime?: number;
 		currentTime?: number;
 		duration?: number;
 		paused?: boolean;
@@ -406,7 +408,12 @@
 			controlsVisible = true;
 		}}
 		onloadedmetadata={() => {
-			if (videoEl) duration = videoEl.duration;
+			if (videoEl) {
+				duration = videoEl.duration;
+				if (startTime > 0) {
+					videoEl.currentTime = startTime;
+				}
+			}
 		}}
 		oncanplay={() => (loading = false)}
 		onwaiting={() => (loading = true)}
@@ -910,14 +917,16 @@
 		font-size: clamp(2rem, 2.5vw, 3rem);
 		font-weight: 500;
 		line-height: 1.4;
-		color: #fff;
+		color: #ffffffdd;
 		padding: 0.2em 0.5em;
 		border-radius: 4px;
 		text-shadow:
-			0 1px 3px rgba(0, 0, 0, 0.8),
+			0 1px 3px rgba(0, 0, 0, 1),
 			0 0 12px rgba(0, 0, 0, 0.4);
 		-webkit-box-decoration-break: clone;
 		box-decoration-break: clone;
+
+		filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8));
 	}
 
 	/* ── Controls ── */

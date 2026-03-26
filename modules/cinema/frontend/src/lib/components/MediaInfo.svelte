@@ -1,8 +1,19 @@
 <script lang="ts">
-	import type { MediaItem, Stream } from "$lib/api.gen";
+	import type {
+		MediaItem,
+		Stream,
+		SearchResult,
+		WatchHistoryItem,
+	} from "$lib/api.gen";
+	import {
+		addToCollection,
+		removeFromCollection,
+		isInCollection,
+	} from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
-	import { Button, MediaCard, Pill, Text } from "glow";
+	import { Button, Icon, MediaCard, Pill, Text } from "glow";
 	import StreamList from "./StreamList.svelte";
+	import PlayCard from "./PlayCard.svelte";
 
 	let {
 		item,
@@ -11,6 +22,10 @@
 		onwatch,
 		onplay,
 		onselectseason,
+		onselectepisode,
+		similarItems = [],
+		resumeEntry,
+		onresume,
 	}: {
 		item: MediaItem;
 		streams?: Stream[];
@@ -18,7 +33,56 @@
 		onwatch?: () => void;
 		onplay?: (stream: Stream) => void;
 		onselectseason?: (seasonNumber: number) => void;
+		onselectepisode?: (season: number, episode: number) => void;
+		similarItems?: SearchResult[];
+		resumeEntry?: WatchHistoryItem | null;
+		onresume?: () => void;
 	} = $props();
+
+	let onWatchlist = $state(false);
+	let isFavorite = $state(false);
+	let watchlistLoading = $state(false);
+	let favoriteLoading = $state(false);
+
+	$effect(() => {
+		isInCollection("watchlist", item.media_type, item.id)
+			.then((res) => {
+				onWatchlist = res.data.in_collection;
+			})
+			.catch(() => {});
+		isInCollection("favorites", item.media_type, item.id)
+			.then((res) => {
+				isFavorite = res.data.in_collection;
+			})
+			.catch(() => {});
+	});
+
+	async function toggleCollection(
+		name: string,
+		current: boolean,
+		setLoading: (v: boolean) => void,
+		setState: (v: boolean) => void,
+	) {
+		setLoading(true);
+		try {
+			if (current) {
+				await removeFromCollection(name, item.media_type, item.id);
+				setState(false);
+			} else {
+				await addToCollection({
+					collection: name,
+					media_type: item.media_type,
+					tmdb_id: item.id,
+					title: item.title,
+					poster_path: item.poster_path ?? undefined,
+				});
+				setState(true);
+			}
+		} catch {
+		} finally {
+			setLoading(false);
+		}
+	}
 </script>
 
 <div class="sidebar">
@@ -34,10 +98,14 @@
 
 	<div class="meta">
 		{#if item.release_date}
-			<Text as="span" variant="secondary" size="sm">{item.release_date.slice(0, 4)}</Text>
+			<Text as="span" variant="secondary" size="sm"
+				>{item.release_date.slice(0, 4)}</Text
+			>
 		{/if}
 		{#if item.runtime}
-			<Text as="span" variant="secondary" size="sm">{item.runtime} min</Text>
+			<Text as="span" variant="secondary" size="sm"
+				>{item.runtime} min</Text
+			>
 		{/if}
 		{#if item.seasons}
 			<Text as="span" variant="secondary" size="sm">
@@ -45,55 +113,155 @@
 			</Text>
 		{/if}
 		{#if item.rating}
-			<Text as="span" variant="secondary" size="sm">★ {item.rating.toFixed(1)}</Text>
+			<Text as="span" variant="secondary" size="sm"
+				>★ {item.rating.toFixed(1)}</Text
+			>
 		{/if}
 	</div>
 
-	{#if item.tagline}
-		<Text variant="muted" size="sm">{item.tagline}</Text>
-	{/if}
-
-	{#if item.genres.length}
-		<div class="genres">
-			{#each item.genres as genre}
-				<Pill label={genre.name} />
-			{/each}
-		</div>
-	{/if}
+	<div class="actions-row">
+		<span class:favorited={isFavorite}>
+			<Button
+				variant="ghost"
+				icon="Heart"
+				loading={favoriteLoading}
+				onclick={() =>
+					toggleCollection(
+						"favorites",
+						isFavorite,
+						(v) => (favoriteLoading = v),
+						(v) => (isFavorite = v),
+					)}
+			/>
+		</span>
+		<Button
+			variant="ghost"
+			icon={onWatchlist ? "BookmarkCheck" : "Bookmark"}
+			loading={watchlistLoading}
+			onclick={() =>
+				toggleCollection(
+					"watchlist",
+					onWatchlist,
+					(v) => (watchlistLoading = v),
+					(v) => (onWatchlist = v),
+				)}
+		/>
+	</div>
 
 	{#if item.overview}
 		<Text size="sm">{item.overview}</Text>
 	{/if}
 
-	{#if item.media_type === "movie" && streams.length === 0 && onwatch}
-		<Button
-			variant="primary"
-			label={loadingStreams ? "Finding streams..." : "Watch"}
-			disabled={loadingStreams}
-			loading={loadingStreams}
-			onclick={onwatch}
-		/>
-	{/if}
-
-	{#if item.media_type === "movie" && streams.length > 0 && onplay}
-		<div class="streams-section">
-			<Text weight="semibold" size="sm">Streams</Text>
-			<StreamList {streams} {onplay} />
-		</div>
-	{/if}
-
-	{#if item.seasons?.length && onselectseason}
-		<div class="season-cards">
-			{#each item.seasons as season}
-				<MediaCard
-					title={season.name}
-					src={season.poster_path ? imageUrl(season.poster_path, "w185") : ""}
-					aspectRatio="2/3"
-					onclick={() => onselectseason(season.season_number)}
+	{#if item.media_type === "movie"}
+		<div class="play-row">
+			{#if resumeEntry?.info_hash && onresume}
+				{@const remainingMin = Math.ceil(
+					(resumeEntry.duration - resumeEntry.progress) / 60,
+				)}
+				<PlayCard
+					image={item.backdrops?.[1]
+						? imageUrl(item.backdrops[1], "w780")
+						: item.backdrops?.[0]
+							? imageUrl(item.backdrops[0], "w780")
+							: undefined}
+					label={item.title}
+					action={item.tagline?.replaceAll(".", "") ?? "Continue"}
+					remaining="{remainingMin} min left"
+					progress={(resumeEntry.progress / resumeEntry.duration) *
+						100}
+					onclick={onresume}
 				/>
-			{/each}
+			{:else if streams.length === 0 && onwatch}
+				<PlayCard
+					image={item.backdrops?.[1]
+						? imageUrl(item.backdrops[1], "w780")
+						: item.backdrops?.[0]
+							? imageUrl(item.backdrops[0], "w780")
+							: undefined}
+					label={item.title}
+					action={loadingStreams
+						? "Finding streams..."
+						: (item.tagline?.replaceAll(".", "") ?? "Watch")}
+					onclick={onwatch}
+				/>
+			{/if}
+		</div>
+		{#if streams.length > 0 && onplay}
+			<div class="streams-section">
+				<Text weight="semibold" size="sm">Streams</Text>
+				<StreamList {streams} {onplay} />
+			</div>
+		{/if}
+	{/if}
+
+	{#if item.seasons?.length}
+		<div class="play-row">
+			{#if resumeEntry?.info_hash && onresume}
+				{@const remainingMin = Math.ceil(
+					(resumeEntry.duration - resumeEntry.progress) / 60,
+				)}
+				{@const resumeEpisode = item.seasons
+					?.find((s) => s.season_number === resumeEntry.season)
+					?.episodes?.find(
+						(e) => e.episode_number === resumeEntry.episode,
+					)}
+				<PlayCard
+					image={resumeEpisode?.still_path
+						? imageUrl(resumeEpisode.still_path, "w780")
+						: undefined}
+					label={`S${resumeEntry.season} E${resumeEntry.episode}`}
+					action={resumeEpisode?.name ?? "Continue"}
+					remaining="{remainingMin} min left"
+					progress={(resumeEntry.progress / resumeEntry.duration) *
+						100}
+					onclick={onresume}
+				/>
+			{:else if item.seasons[0]?.episodes?.[0] && onselectepisode}
+				{@const firstSe = item.seasons[0]}
+				{@const firstEp = firstSe.episodes[0]}
+				<PlayCard
+					image={firstEp.still_path
+						? imageUrl(firstEp.still_path, "w780")
+						: undefined}
+					label={`S${firstSe.season_number} E${firstEp.episode_number}`}
+					action={firstEp.name ?? "Continue"}
+					onclick={() =>
+						onselectepisode(
+							item.seasons![0].season_number,
+							firstEp.episode_number,
+						)}
+				/>
+			{/if}
+
+			{#if onselectseason}
+				<Button
+					variant="ghost"
+					icon="LayoutGrid"
+					onclick={() =>
+						onselectseason(item.seasons![0].season_number)}
+				/>
+			{/if}
 		</div>
 	{/if}
+
+	<!-- {#if similarItems.length > 0}
+		<div class="similar-section">
+			<Text weight="semibold" size="sm">Similar</Text>
+			<div class="similar-grid">
+				{#each similarItems.slice(0, 8) as sim}
+					<MediaCard
+						title={sim.title}
+						src={sim.poster_path
+							? imageUrl(sim.poster_path, "w185")
+							: ""}
+						aspectRatio="2/3"
+						onclick={() =>
+							(window.location.href = `/cinema/${sim.media_type}/${sim.id}`)}
+					/>
+				{/each}
+			</div>
+		</div>
+	{/if} -->
 </div>
 
 <style>
@@ -125,6 +293,28 @@
 		display: flex;
 		gap: 0.75rem;
 		align-items: center;
+		justify-content: center;
+	}
+
+	/* ── Play row ── */
+	.play-row {
+		display: flex;
+		gap: 0.5rem;
+		margin-top: auto;
+		align-self: flex-end;
+		align-items: stretch;
+		max-width: 100%;
+	}
+
+	.favorited :global(svg) {
+		color: #ef4444;
+		fill: #ef4444;
+	}
+
+	.actions-row {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
 	}
 
 	.genres {
@@ -137,13 +327,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-	}
-
-	.season-cards {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-		gap: 0.5rem;
-		margin-top: auto;
 	}
 
 	@media (max-width: 768px) {

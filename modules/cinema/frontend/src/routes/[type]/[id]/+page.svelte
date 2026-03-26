@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from "$app/state";
 	import { replaceState } from "$app/navigation";
+	import { onDestroy } from "svelte";
 	import {
 		movieStreams,
 		tvStreams,
@@ -12,6 +13,11 @@
 		type Stream,
 		type SubtitleTrack,
 		type SubtitleCue,
+		type SearchResult,
+		similar as fetchSimilar,
+		recordWatch,
+		watchHistory as fetchWatchHistory,
+		type WatchHistoryItem,
 	} from "$lib/api.gen";
 	import { getDetails, imageUrl, playStream } from "$lib/utils";
 	import { Banner, Text } from "glow";
@@ -37,6 +43,12 @@
 	let subtitleTracks = $state<SubtitleTrack[]>([]);
 	let activeCues = $state<SubtitleCue[]>([]);
 	let activeTrackUrl = $state<string | undefined>(undefined);
+	let similarItems = $state<SearchResult[]>([]);
+	let resumeEntry = $state<WatchHistoryItem | null>(null);
+	let playerTime = $state(0);
+	let playerDuration = $state(0);
+	let playerPaused = $state(true);
+	let playerStartTime = $state(0);
 	let loadingSubtitles = $state(false);
 
 	// ── Derived ──
@@ -45,7 +57,7 @@
 	);
 
 	const backdropUrls = $derived(
-		item?.backdrops?.map((b) => imageUrl(b, "original")) ?? [],
+		item?.backdrops?.filter((_, i) => i !== 1).map((b) => imageUrl(b, "original")) ?? [],
 	);
 
 	const activeSeason = $derived(
@@ -111,12 +123,24 @@
 		selectedSeason = page.url.searchParams.has("s") ? Number(page.url.searchParams.get("s")) : null;
 		selectedEpisode = page.url.searchParams.has("e") ? Number(page.url.searchParams.get("e")) : null;
 		error = null;
+		similarItems = [];
 		getDetails(type, id)
 			.then((res) => {
 				item = res.data;
 				if (selectedSeason !== null && selectedEpisode !== null) {
 					loadEpisodeStreams(selectedSeason, selectedEpisode);
 				}
+				// Fetch similar + watch history in background
+				fetchSimilar(type, id)
+					.then((r) => { similarItems = r.data; })
+					.catch(() => {});
+				fetchWatchHistory()
+					.then((r) => {
+						resumeEntry = r.data.find(
+							(w) => w.media_type === type && w.tmdb_id === id && w.info_hash && w.progress > 0
+						) ?? null;
+					})
+					.catch(() => {});
 			})
 			.catch((e) => (error = e.message));
 	});
@@ -177,9 +201,23 @@
 		finally { loadingStreams = false; }
 	}
 
+	function resume() {
+		if (!resumeEntry?.info_hash || !item) return;
+		if (resumeEntry.season > 0) {
+			selectedSeason = resumeEntry.season;
+			selectedEpisode = resumeEntry.episode;
+		}
+		playerStartTime = resumeEntry.progress ?? 0;
+		play({
+			info_hash: resumeEntry.info_hash,
+			file_idx: resumeEntry.file_idx,
+		} as Stream, true);
+	}
+
 	// ── Player ──
-	async function play(stream: Stream) {
+	async function play(stream: Stream, fromResume = false) {
 		if (!item) return;
+		if (!fromResume) playerStartTime = 0;
 		selectedStream = stream;
 		streamUrl = null;
 		subtitleTracks = [];
@@ -194,6 +232,7 @@
 		playStream(stream.info_hash, stream.file_idx)
 			.then((url) => { streamUrl = url; })
 			.catch((e) => { error = e.message; });
+
 		loadSubtitles();
 	}
 
@@ -221,6 +260,7 @@
 	function disableSubtitles() { activeCues = []; activeTrackUrl = undefined; }
 
 	function stopPlaying() {
+		saveProgress();
 		selectedStream = null;
 		streamUrl = null;
 		subtitleTracks = [];
@@ -230,7 +270,54 @@
 		u.searchParams.delete("hash");
 		u.searchParams.delete("file");
 		replaceState(u, {});
+
+		// Refresh resume entry so the Continue button shows updated progress
+		fetchWatchHistory()
+			.then((r) => {
+				const type = page.params.type;
+				const id = Number(page.params.id);
+				resumeEntry = r.data.find(
+					(w) => w.media_type === type && w.tmdb_id === id && w.info_hash && w.progress > 0
+				) ?? null;
+			})
+			.catch(() => {});
 	}
+
+	// ── Progress saving ──
+	function saveProgress() {
+		if (!item || !selectedStream || playerTime <= 0) return;
+		// For TV, don't save without season/episode
+		if (item.media_type === "tv" && (!selectedSeason || !selectedEpisode)) return;
+		recordWatch({
+			media_type: item.media_type,
+			tmdb_id: item.id,
+			title: item.title,
+			poster_path: item.poster_path ?? undefined,
+			season: selectedSeason ?? undefined,
+			episode: selectedEpisode ?? undefined,
+			info_hash: selectedStream.info_hash,
+			file_idx: selectedStream.file_idx,
+			progress: playerTime,
+			duration: playerDuration,
+		});
+	}
+
+	// Save when paused
+	$effect(() => {
+		if (playerPaused && selectedStream && playerTime > 0) {
+			saveProgress();
+		}
+	});
+
+	// Save periodically every 30s while playing
+	$effect(() => {
+		if (!selectedStream) return;
+		const interval = setInterval(saveProgress, 30000);
+		return () => clearInterval(interval);
+	});
+
+	// Save on page leave
+	onDestroy(() => saveProgress());
 </script>
 
 {#if error}
@@ -260,9 +347,13 @@
 				{item}
 				{streams}
 				{loadingStreams}
+				{similarItems}
+				{resumeEntry}
 				onwatch={loadMovieStreams}
 				onplay={play}
+				onresume={resume}
 				onselectseason={selectSeason}
+				onselectepisode={selectEpisode}
 			/>
 		</div>
 
@@ -308,6 +399,10 @@
 				{loadingSubtitles}
 				{activeTrackUrl}
 				accent={accentColor}
+				startTime={playerStartTime}
+				bind:currentTime={playerTime}
+				bind:duration={playerDuration}
+				bind:paused={playerPaused}
 				onClose={stopPlaying}
 				onSubtitleSelect={selectSubtitleTrack}
 				onSubtitleOff={disableSubtitles}

@@ -83,7 +83,8 @@ struct TmdbMultiSearchResults {
 #[derive(Deserialize)]
 struct TmdbMultiSearchResult {
     id: i64,
-    media_type: String,
+    #[serde(default)]
+    media_type: Option<String>,
     // movie fields
     title: Option<String>,
     release_date: Option<String>,
@@ -97,11 +98,11 @@ struct TmdbMultiSearchResult {
 }
 
 impl TmdbMultiSearchResult {
-    fn into_search_result(self) -> Option<SearchResult> {
-        let media_type = match self.media_type.as_str() {
-            "movie" => MediaType::Movie,
-            "tv" => MediaType::Tv,
-            _ => return None,
+    fn into_search_result(self, fallback_type: Option<MediaType>) -> Option<SearchResult> {
+        let media_type = match self.media_type.as_deref() {
+            Some("movie") => MediaType::Movie,
+            Some("tv") => MediaType::Tv,
+            _ => fallback_type?,
         };
         Some(SearchResult {
             id: self.id,
@@ -226,12 +227,20 @@ fn convert_videos(videos: Option<TmdbVideos>) -> Vec<Video> {
         .unwrap_or_default()
 }
 
-/// Pick the best poster: highest resolution, prefer no-language (clean) version
+/// Pick the best poster: prefer English, then no-language, then highest resolution
 fn pick_poster(images: &Option<TmdbImages>, fallback: Option<&str>) -> Option<String> {
     if let Some(imgs) = images {
         let mut posters: Vec<&TmdbImage> = imgs.posters.iter().collect();
         if !posters.is_empty() {
-            posters.sort_by(|a, b| b.width.cmp(&a.width));
+            posters.sort_by(|a, b| {
+                let a_en = (a.iso_639_1.as_deref() == Some("en")) as u8;
+                let b_en = (b.iso_639_1.as_deref() == Some("en")) as u8;
+                let a_clean = a.iso_639_1.is_none() as u8;
+                let b_clean = b.iso_639_1.is_none() as u8;
+                b_en.cmp(&a_en)
+                    .then(b_clean.cmp(&a_clean))
+                    .then(b.width.cmp(&a.width))
+            });
             return Some(posters[0].file_path.clone());
         }
     }
@@ -256,7 +265,9 @@ fn pick_backdrops(images: &Option<TmdbImages>, fallback: Option<&str>) -> Vec<St
 
         // Sort by votes descending — first element is always the most upvoted
         candidates.sort_by(|a, b| {
-            b.vote_average.partial_cmp(&a.vote_average).unwrap_or(std::cmp::Ordering::Equal)
+            b.vote_average
+                .partial_cmp(&a.vote_average)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Shuffle the rest (index 1+) with weighted randomness
@@ -407,7 +418,7 @@ impl TmdbClient {
         Ok(data
             .results
             .into_iter()
-            .filter_map(|r| r.into_search_result())
+            .filter_map(|r| r.into_search_result(None))
             .collect())
     }
 
@@ -417,7 +428,7 @@ impl TmdbClient {
             MediaType::Tv => "tv",
         };
         let url = format!(
-            "https://api.themoviedb.org/3/{}/{}?api_key={}&append_to_response=videos,images,external_ids",
+            "https://api.themoviedb.org/3/{}/{}?api_key={}&append_to_response=videos,images,external_ids&include_image_language=en,null",
             type_str, id, self.api_key
         );
         let res = self.client.get(&url).send().await?.error_for_status()?;
@@ -466,6 +477,44 @@ impl TmdbClient {
                 overview: e.overview,
                 still_path: e.still_path,
             })
+            .collect())
+    }
+
+    pub async fn trending(&self) -> forge::Result<Vec<SearchResult>> {
+        let url = format!(
+            "https://api.themoviedb.org/3/trending/all/week?api_key={}",
+            self.api_key
+        );
+        let res = self.client.get(&url).send().await?.error_for_status()?;
+        let body = res.text().await?;
+        let data: TmdbMultiSearchResults = json::from_str(&body)?;
+        Ok(data
+            .results
+            .into_iter()
+            .filter_map(|r| r.into_search_result(None))
+            .collect())
+    }
+
+    pub async fn similar(
+        &self,
+        media_type: MediaType,
+        id: i64,
+    ) -> forge::Result<Vec<SearchResult>> {
+        let type_str = match media_type {
+            MediaType::Movie => "movie",
+            MediaType::Tv => "tv",
+        };
+        let url = format!(
+            "https://api.themoviedb.org/3/{}/{}/similar?api_key={}",
+            type_str, id, self.api_key
+        );
+        let res = self.client.get(&url).send().await?.error_for_status()?;
+        let body = res.text().await?;
+        let data: TmdbMultiSearchResults = json::from_str(&body)?;
+        Ok(data
+            .results
+            .into_iter()
+            .filter_map(|r| r.into_search_result(Some(media_type)))
             .collect())
     }
 }

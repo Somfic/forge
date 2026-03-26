@@ -14,6 +14,135 @@
     "version": "0.2.0"
   },
   "paths": {
+    "/collection": {
+      "post": {
+        "operationId": "add_to_collection",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/collection/{collection}": {
+      "get": {
+        "operationId": "get_collection",
+        "parameters": [
+          {
+            "name": "collection",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CollectionItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/collection/{collection}/{type}/{id}": {
+      "get": {
+        "operationId": "is_in_collection",
+        "parameters": [
+          {
+            "name": "collection",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "remove_from_collection",
+        "parameters": [
+          {
+            "name": "collection",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/movie/{id}": {
       "get": {
         "operationId": "movie_details",
@@ -52,6 +181,45 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchResult"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/similar/{type}/{id}": {
+      "get": {
+        "operationId": "similar",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
             }
           }
         ],
@@ -299,6 +467,26 @@
         }
       }
     },
+    "/trending": {
+      "get": {
+        "operationId": "trending",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchResult"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tv/{id}": {
       "get": {
         "operationId": "tv_details",
@@ -326,10 +514,125 @@
           }
         }
       }
+    },
+    "/watch": {
+      "post": {
+        "operationId": "record_watch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordWatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/watch/history": {
+      "get": {
+        "operationId": "watch_history",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchHistoryItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "CollectionItem": {
+        "type": "object",
+        "required": [
+          "collection",
+          "media_type",
+          "tmdb_id",
+          "title",
+          "added_at"
+        ],
+        "properties": {
+          "added_at": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "tmdb_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CollectionRequest": {
+        "type": "object",
+        "required": [
+          "collection",
+          "media_type",
+          "tmdb_id",
+          "title"
+        ],
+        "properties": {
+          "collection": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "tmdb_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "CollectionStatus": {
+        "type": "object",
+        "required": [
+          "in_collection"
+        ],
+        "properties": {
+          "in_collection": {
+            "type": "boolean"
+          }
+        }
+      },
       "Episode": {
         "type": "object",
         "required": [
@@ -480,6 +783,73 @@
           "movie",
           "tv"
         ]
+      },
+      "RecordWatchRequest": {
+        "type": "object",
+        "required": [
+          "media_type",
+          "tmdb_id",
+          "title"
+        ],
+        "properties": {
+          "duration": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "episode": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "file_idx": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "info_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "season": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tmdb_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
       },
       "SearchResult": {
         "type": "object",
@@ -736,6 +1106,67 @@
           },
           "video_type": {
             "type": "string"
+          }
+        }
+      },
+      "WatchHistoryItem": {
+        "type": "object",
+        "required": [
+          "media_type",
+          "tmdb_id",
+          "title",
+          "season",
+          "episode",
+          "file_idx",
+          "progress",
+          "duration",
+          "last_watched"
+        ],
+        "properties": {
+          "duration": {
+            "type": "number",
+            "format": "double"
+          },
+          "episode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "file_idx": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "info_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_watched": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "format": "double"
+          },
+          "season": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tmdb_id": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       }

@@ -5,6 +5,29 @@
  * Utoipa's axum bindings for seamless integration for the two
  * OpenAPI spec version: 0.2.0
  */
+export interface CollectionItem {
+  added_at: string;
+  collection: string;
+  media_type: string;
+  /** @nullable */
+  poster_path?: string | null;
+  title: string;
+  tmdb_id: number;
+}
+
+export interface CollectionRequest {
+  collection: string;
+  media_type: string;
+  /** @nullable */
+  poster_path?: string | null;
+  title: string;
+  tmdb_id: number;
+}
+
+export interface CollectionStatus {
+  in_collection: boolean;
+}
+
 export interface Episode {
   episode_number: number;
   name: string;
@@ -73,6 +96,26 @@ export interface MediaItem {
   videos: Video[];
 }
 
+export interface RecordWatchRequest {
+  /** @nullable */
+  duration?: number | null;
+  /** @nullable */
+  episode?: number | null;
+  /** @nullable */
+  file_idx?: number | null;
+  /** @nullable */
+  info_hash?: string | null;
+  media_type: string;
+  /** @nullable */
+  poster_path?: string | null;
+  /** @nullable */
+  progress?: number | null;
+  /** @nullable */
+  season?: number | null;
+  title: string;
+  tmdb_id: number;
+}
+
 export interface SearchResult {
   /** @nullable */
   backdrop_path?: string | null;
@@ -138,6 +181,22 @@ export interface SubtitleTrack {
   url: string;
 }
 
+export interface WatchHistoryItem {
+  duration: number;
+  episode: number;
+  file_idx: number;
+  /** @nullable */
+  info_hash?: string | null;
+  last_watched: string;
+  media_type: string;
+  /** @nullable */
+  poster_path?: string | null;
+  progress: number;
+  season: number;
+  title: string;
+  tmdb_id: number;
+}
+
 export type SearchParams = {
 q: string;
 };
@@ -148,6 +207,171 @@ export type SubtitleCuesParams = {
  */
 url: string;
 };
+
+export type addToCollectionResponse204 = {
+  data: void
+  status: 204
+}
+
+export type addToCollectionResponseSuccess = (addToCollectionResponse204) & {
+  headers: Headers;
+};
+;
+
+export type addToCollectionResponse = (addToCollectionResponseSuccess)
+
+export const getAddToCollectionUrl = () => {
+
+
+
+
+  return `/cinema/api/collection`
+}
+
+export const addToCollection = async (collectionRequest: CollectionRequest, options?: RequestInit): Promise<addToCollectionResponse> => {
+
+  const res = await fetch(getAddToCollectionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      collectionRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: addToCollectionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as addToCollectionResponse
+}
+
+
+
+export type getCollectionResponse200 = {
+  data: CollectionItem[]
+  status: 200
+}
+
+export type getCollectionResponseSuccess = (getCollectionResponse200) & {
+  headers: Headers;
+};
+;
+
+export type getCollectionResponse = (getCollectionResponseSuccess)
+
+export const getGetCollectionUrl = (collection: string,) => {
+
+
+
+
+  return `/cinema/api/collection/${collection}`
+}
+
+export const getCollection = async (collection: string, options?: RequestInit): Promise<getCollectionResponse> => {
+
+  const res = await fetch(getGetCollectionUrl(collection),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getCollectionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getCollectionResponse
+}
+
+
+
+export type isInCollectionResponse200 = {
+  data: CollectionStatus
+  status: 200
+}
+
+export type isInCollectionResponseSuccess = (isInCollectionResponse200) & {
+  headers: Headers;
+};
+;
+
+export type isInCollectionResponse = (isInCollectionResponseSuccess)
+
+export const getIsInCollectionUrl = (collection: string,
+    type: string,
+    id: number,) => {
+
+
+
+
+  return `/cinema/api/collection/${collection}/${type}/${id}`
+}
+
+export const isInCollection = async (collection: string,
+    type: string,
+    id: number, options?: RequestInit): Promise<isInCollectionResponse> => {
+
+  const res = await fetch(getIsInCollectionUrl(collection,type,id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: isInCollectionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as isInCollectionResponse
+}
+
+
+
+export type removeFromCollectionResponse204 = {
+  data: void
+  status: 204
+}
+
+export type removeFromCollectionResponseSuccess = (removeFromCollectionResponse204) & {
+  headers: Headers;
+};
+;
+
+export type removeFromCollectionResponse = (removeFromCollectionResponseSuccess)
+
+export const getRemoveFromCollectionUrl = (collection: string,
+    type: string,
+    id: number,) => {
+
+
+
+
+  return `/cinema/api/collection/${collection}/${type}/${id}`
+}
+
+export const removeFromCollection = async (collection: string,
+    type: string,
+    id: number, options?: RequestInit): Promise<removeFromCollectionResponse> => {
+
+  const res = await fetch(getRemoveFromCollectionUrl(collection,type,id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: removeFromCollectionResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as removeFromCollectionResponse
+}
+
+
 
 export type movieDetailsResponse200 = {
   data: MediaItem
@@ -230,6 +454,47 @@ export const search = async (params: SearchParams, options?: RequestInit): Promi
 
   const data: searchResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as searchResponse
+}
+
+
+
+export type similarResponse200 = {
+  data: SearchResult[]
+  status: 200
+}
+
+export type similarResponseSuccess = (similarResponse200) & {
+  headers: Headers;
+};
+;
+
+export type similarResponse = (similarResponseSuccess)
+
+export const getSimilarUrl = (type: string,
+    id: number,) => {
+
+
+
+
+  return `/cinema/api/similar/${type}/${id}`
+}
+
+export const similar = async (type: string,
+    id: number, options?: RequestInit): Promise<similarResponse> => {
+
+  const res = await fetch(getSimilarUrl(type,id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: similarResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as similarResponse
 }
 
 
@@ -485,6 +750,45 @@ export const tvSubtitles = async (id: number,
 
 
 
+export type trendingResponse200 = {
+  data: SearchResult[]
+  status: 200
+}
+
+export type trendingResponseSuccess = (trendingResponse200) & {
+  headers: Headers;
+};
+;
+
+export type trendingResponse = (trendingResponseSuccess)
+
+export const getTrendingUrl = () => {
+
+
+
+
+  return `/cinema/api/trending`
+}
+
+export const trending = async ( options?: RequestInit): Promise<trendingResponse> => {
+
+  const res = await fetch(getTrendingUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: trendingResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as trendingResponse
+}
+
+
+
 export type tvDetailsResponse200 = {
   data: MediaItem
   status: 200
@@ -520,4 +824,83 @@ export const tvDetails = async (id: number, options?: RequestInit): Promise<tvDe
 
   const data: tvDetailsResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as tvDetailsResponse
+}
+
+
+
+export type recordWatchResponse204 = {
+  data: void
+  status: 204
+}
+
+export type recordWatchResponseSuccess = (recordWatchResponse204) & {
+  headers: Headers;
+};
+;
+
+export type recordWatchResponse = (recordWatchResponseSuccess)
+
+export const getRecordWatchUrl = () => {
+
+
+
+
+  return `/cinema/api/watch`
+}
+
+export const recordWatch = async (recordWatchRequest: RecordWatchRequest, options?: RequestInit): Promise<recordWatchResponse> => {
+
+  const res = await fetch(getRecordWatchUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      recordWatchRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: recordWatchResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as recordWatchResponse
+}
+
+
+
+export type watchHistoryResponse200 = {
+  data: WatchHistoryItem[]
+  status: 200
+}
+
+export type watchHistoryResponseSuccess = (watchHistoryResponse200) & {
+  headers: Headers;
+};
+;
+
+export type watchHistoryResponse = (watchHistoryResponseSuccess)
+
+export const getWatchHistoryUrl = () => {
+
+
+
+
+  return `/cinema/api/watch/history`
+}
+
+export const watchHistory = async ( options?: RequestInit): Promise<watchHistoryResponse> => {
+
+  const res = await fetch(getWatchHistoryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: watchHistoryResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as watchHistoryResponse
 }

@@ -1,0 +1,144 @@
+<script lang="ts">
+	import { Icon } from "glow";
+
+	let {
+		image,
+		label,
+		action,
+		remaining,
+		progress,
+		onclick,
+	}: {
+		image?: string;
+		label?: string;
+		action: string;
+		remaining?: string;
+		progress?: number;
+		onclick: () => void;
+	} = $props();
+</script>
+
+<button class="card" {onclick}>
+	{#if image}
+		<img class="bg" src={image} alt="" />
+	{/if}
+	<div class="overlay"></div>
+	<div class="play-icon">
+		<Icon name="Play" size={36} />
+	</div>
+	<div class="content">
+		<div class="left">
+			{#if label}
+				<span class="label">{label}</span>
+			{/if}
+			<span class="action">{action}</span>
+		</div>
+		{#if remaining}
+			<span class="remaining">{remaining}</span>
+		{/if}
+	</div>
+	{#if progress != null && progress > 0}
+		<div class="progress" style="width: {progress}%"></div>
+	{/if}
+</button>
+
+<style>
+	.card {
+		position: relative;
+		height: 200px;
+		aspect-ratio: 16/9;
+		min-width: 0;
+		border-radius: 10px;
+		overflow: hidden;
+		background: var(--bg-surface, #1a1a2e);
+		border: 1px solid rgba(255, 255, 255, 0.08);
+		cursor: pointer;
+		padding: 0;
+		color: inherit;
+		transition: border-color 0.2s;
+	}
+
+	.card:hover {
+		border-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.bg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.overlay {
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(transparent 20%, rgba(0, 0, 0, 0.8));
+	}
+
+	.play-icon {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1;
+		color: white;
+		opacity: 0;
+		transition: opacity 0.2s;
+		background: rgba(0, 0, 0, 0.3);
+	}
+
+	.card:hover .play-icon {
+		opacity: 1;
+	}
+
+	.content {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		padding: 0.6rem 0.8rem;
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-end;
+		z-index: 1;
+	}
+
+	.left {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.label {
+		font-size: 0.65rem;
+		color: rgba(255, 255, 255, 0.5);
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		text-align: left;
+	}
+
+	.action {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: white;
+	}
+
+	.remaining {
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.5);
+	}
+
+	.progress {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		height: 3px;
+		background: var(--primary, #2563eb);
+		z-index: 2;
+	}
+</style>

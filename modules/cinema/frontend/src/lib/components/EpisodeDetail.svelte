@@ -22,11 +22,14 @@
 	<Button variant="ghost" icon="ArrowLeft" onclick={onback} />
 	{#each season.episodes as ep}
 		<MediaCard
-			title="S{season.season_number} E{ep.episode_number}"
 			src={ep.still_path ? imageUrl(ep.still_path, "w185") : ""}
 			aspectRatio="16/9"
 			onclick={() => onselectepisode(season.season_number, ep.episode_number)}
-		/>
+		>
+			{#snippet bottomLeft()}
+				<Text size="xs" variant="muted">S{season.season_number} E{ep.episode_number}</Text>
+			{/snippet}
+		</MediaCard>
 	{/each}
 </div>
 

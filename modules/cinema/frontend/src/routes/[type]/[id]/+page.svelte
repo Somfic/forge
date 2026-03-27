@@ -20,7 +20,7 @@
 		type WatchHistoryItem,
 	} from "$lib/api.gen";
 	import { getDetails, imageUrl, playStream } from "$lib/utils";
-	import { Banner, Text } from "glow";
+	import { Banner, Button, Text } from "glow";
 	import CyclingBackdrop from "$lib/components/CyclingBackdrop.svelte";
 	import VideoPlayer from "$lib/components/VideoPlayer.svelte";
 	import MediaInfo from "$lib/components/MediaInfo.svelte";
@@ -352,6 +352,13 @@
 	<div class="gradient-right" class:hidden={slideIndex > 0 || selectedStream !== null} bind:this={gradientRightEl}></div>
 	<div class="gradient-left" class:hidden={slideIndex !== 2 || selectedStream !== null} bind:this={gradientLeftEl}></div>
 
+	<!-- Back button -->
+	{#if slideIndex === 0 && !selectedStream}
+		<div class="back-button">
+			<Button variant="ghost" icon="ArrowLeft" onclick={() => window.history.back()} />
+		</div>
+	{/if}
+
 	<!-- Slider -->
 	<div class="slider" class:faded={selectedStream !== null} style="transform: translateX({-slideIndex * 100}vw)">
 		<!-- Page 0: Info -->
@@ -426,6 +433,14 @@
 <style>
 	:global(body) {
 		background: transparent !important;
+	}
+
+	/* ── Back button ── */
+	.back-button {
+		position: fixed;
+		top: 1rem;
+		left: 1rem;
+		z-index: 5;
 	}
 
 	/* ── Backdrop ── */

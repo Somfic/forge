@@ -257,14 +257,17 @@
 			<div class="similar-grid">
 				{#each similarItems.slice(0, 8) as sim}
 					<MediaCard
-						title={sim.title}
 						src={sim.poster_path
 							? imageUrl(sim.poster_path, "w185")
 							: ""}
 						aspectRatio="2/3"
 						onclick={() =>
 							(window.location.href = `/cinema/${sim.media_type}/${sim.id}`)}
-					/>
+					>
+						{#snippet bottomLeft()}
+							<Text size="xs" variant="on-image">{sim.title}</Text>
+						{/snippet}
+					</MediaCard>
 				{/each}
 			</div>
 		</div>

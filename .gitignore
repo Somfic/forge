@@ -1,5 +1,5 @@
 /target
-spine.toml
+forge.toml
 /data
 /.claude
 node_modules
@@ -25,3 +25,7 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Nix/direnv
+.direnv
+result

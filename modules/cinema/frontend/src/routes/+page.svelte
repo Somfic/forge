@@ -25,19 +25,29 @@
 	// Load browse data on mount
 	$effect(() => {
 		fetchWatchHistory()
-			.then((res) => { historyItems = res.data; })
+			.then((res) => {
+				historyItems = res.data;
+			})
 			.catch(() => {});
 		fetchCollection("watchlist")
-			.then((res) => { watchlistItems = res.data; })
+			.then((res) => {
+				watchlistItems = res.data;
+			})
 			.catch(() => {});
 		fetchCollection("favorites")
-			.then((res) => { favoriteItems = res.data; })
+			.then((res) => {
+				favoriteItems = res.data;
+			})
 			.catch(() => {});
 		fetchCollection("watched")
-			.then((res) => { watchedItems = res.data; })
+			.then((res) => {
+				watchedItems = res.data;
+			})
 			.catch(() => {});
 		fetchTrending()
-			.then((res) => { trendingItems = res.data; })
+			.then((res) => {
+				trendingItems = res.data;
+			})
 			.catch(() => {});
 	});
 
@@ -49,8 +59,8 @@
 			results = [];
 			return;
 		}
+		loading = true;
 		timeout = setTimeout(async () => {
-			loading = true;
 			try {
 				const res = await search({ q: query });
 				results = res.data;
@@ -59,11 +69,6 @@
 			}
 		}, 300);
 	}
-
-	function progressPercent(item: WatchHistoryItem): number {
-		if (!item.duration || item.duration === 0) return 0;
-		return Math.round((item.progress / item.duration) * 100);
-	}
 </script>
 
 <div class="content">
@@ -71,7 +76,8 @@
 		type="text"
 		placeholder="Search movies and TV shows..."
 		value={query}
-		icon={loading ? "LoaderCircle" : "Search"}
+		icon={"Search"}
+		{loading}
 		onChange={(v) => {
 			query = v;
 			onInput();
@@ -84,18 +90,30 @@
 				<Heading level={2}>Continue Watching</Heading>
 				<div class="row">
 					{#each historyItems as item}
-						{@const minLeft = Math.ceil((item.duration - item.progress) / 60)}
-						{@const pct = item.duration > 0 ? (item.progress / item.duration) * 100 : 0}
-						<div class="history-card" role="button" tabindex="0" onclick={() => (window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}>
-							<MediaCard
-								subtitle={item.media_type === "tv" && item.season > 0
-									? `S${item.season} E${item.episode} · ${minLeft} min left`
-									: `${minLeft} min left`}
-								src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
-								aspectRatio="2/3"
-							/>
-							<div class="history-progress" style="width: {pct}%"></div>
-						</div>
+						{@const minLeft = Math.ceil(
+							(item.duration - item.progress) / 60,
+						)}
+						{@const pct =
+							item.duration > 0
+								? (item.progress / item.duration) * 100
+								: 0}
+						<MediaCard
+							src={item.poster_path
+								? imageUrl(item.poster_path, "w342")
+								: ""}
+							aspectRatio="2/3"
+							progress={pct}
+							onclick={() =>
+								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
+						>
+							{#snippet bottomLeft()}
+								<Text size="xs" variant="muted">
+									{item.media_type === "tv" && item.season > 0
+										? `S${item.season} E${item.episode} · ${minLeft} min left`
+										: `${minLeft} min left`}
+								</Text>
+							{/snippet}
+						</MediaCard>
 					{/each}
 				</div>
 			</section>
@@ -107,12 +125,17 @@
 				<div class="row">
 					{#each watchlistItems as item}
 						<MediaCard
-							title={item.title}
-							src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
+							src={item.poster_path
+								? imageUrl(item.poster_path, "w342")
+								: ""}
 							aspectRatio="2/3"
 							onclick={() =>
 								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
-						/>
+						>
+							{#snippet bottomLeft()}
+								<Text size="xs" variant="muted">{item.title}</Text>
+							{/snippet}
+						</MediaCard>
 					{/each}
 				</div>
 			</section>
@@ -124,12 +147,17 @@
 				<div class="row">
 					{#each favoriteItems as item}
 						<MediaCard
-							title={item.title}
-							src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
+							src={item.poster_path
+								? imageUrl(item.poster_path, "w342")
+								: ""}
 							aspectRatio="2/3"
 							onclick={() =>
 								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
-						/>
+						>
+							{#snippet bottomLeft()}
+								<Text size="xs" variant="muted">{item.title}</Text>
+							{/snippet}
+						</MediaCard>
 					{/each}
 				</div>
 			</section>
@@ -141,15 +169,26 @@
 				<div class="row">
 					{#each trendingItems as item}
 						<MediaCard
-							title={item.title}
-							subtitle={item.release_date
-								? `${item.release_date.slice(0, 4)} • ${item.media_type === "movie" ? "Movie" : "TV"}`
-								: item.media_type === "movie" ? "Movie" : "TV"}
-							src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
+							src={item.poster_path
+								? imageUrl(item.poster_path, "w342")
+								: ""}
 							aspectRatio="2/3"
 							onclick={() =>
 								(window.location.href = `/cinema/${item.media_type}/${item.id}`)}
-						/>
+						>
+							{#snippet bottomLeft()}
+								<Text size="xs" variant="muted">{item.title}</Text>
+							{/snippet}
+							{#snippet bottomRight()}
+								<Text size="xs" variant="muted">
+									{item.release_date
+										? `${item.release_date.slice(0, 4)} · ${item.media_type === "movie" ? "Movie" : "TV"}`
+										: item.media_type === "movie"
+											? "Movie"
+											: "TV"}
+								</Text>
+							{/snippet}
+						</MediaCard>
 					{/each}
 				</div>
 			</section>
@@ -161,12 +200,17 @@
 				<div class="row">
 					{#each watchedItems as item}
 						<MediaCard
-							title={item.title}
-							src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
+							src={item.poster_path
+								? imageUrl(item.poster_path, "w342")
+								: ""}
 							aspectRatio="2/3"
 							onclick={() =>
 								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
-						/>
+						>
+							{#snippet bottomLeft()}
+								<Text size="xs" variant="muted">{item.title}</Text>
+							{/snippet}
+						</MediaCard>
 					{/each}
 				</div>
 			</section>
@@ -175,15 +219,26 @@
 		<div class="grid">
 			{#each results as item}
 				<MediaCard
-					title={item.title}
-					subtitle={item.release_date
-						? `${item.release_date.slice(0, 4)} • ${item.media_type === "movie" ? "Movie" : "TV"}`
-						: item.media_type === "movie" ? "Movie" : "TV"}
-					src={item.poster_path ? imageUrl(item.poster_path, "w342") : ""}
+					src={item.poster_path
+						? imageUrl(item.poster_path, "w342")
+						: ""}
 					aspectRatio="2/3"
 					onclick={() =>
 						(window.location.href = `/cinema/${item.media_type}/${item.id}`)}
-				/>
+				>
+					{#snippet bottomLeft()}
+						<Text size="xs" variant="muted">{item.title}</Text>
+					{/snippet}
+					{#snippet bottomRight()}
+						<Text size="xs" variant="muted">
+							{item.release_date
+								? `${item.release_date.slice(0, 4)} · ${item.media_type === "movie" ? "Movie" : "TV"}`
+								: item.media_type === "movie"
+									? "Movie"
+									: "TV"}
+						</Text>
+					{/snippet}
+				</MediaCard>
 			{/each}
 		</div>
 	{/if}
@@ -219,21 +274,5 @@
 	.row :global(> *) {
 		width: 160px;
 		flex-shrink: 0;
-	}
-
-	.history-card {
-		position: relative;
-		overflow: hidden;
-		border-radius: 10px;
-		cursor: pointer;
-	}
-
-	.history-progress {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		height: 3px;
-		background: var(--primary, #2563eb);
-		z-index: 1;
 	}
 </style>

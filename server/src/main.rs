@@ -24,7 +24,7 @@ async fn main_wrapper() -> Result<()> {
         .event_format(forge::ForgeFormatter)
         .init();
 
-    let config = Config::from_file("spine.toml")?;
+    let config = Config::from_file("forge.toml")?;
     let dev = std::env::args().any(|a| a == "--dev");
 
     Platform::new(config, modules()).dev(dev).run().await

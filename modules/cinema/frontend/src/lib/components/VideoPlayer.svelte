@@ -3,7 +3,7 @@
 	import { fade } from "svelte/transition";
 	// @ts-ignore — hls.js types are resolved at build time
 	import Hls from "hls.js";
-	import { Button } from "glow";
+	import { Button, Icon } from "glow";
 	import GradientOverlay from "./GradientOverlay.svelte";
 	import Spinner from "./Spinner.svelte";
 
@@ -40,6 +40,7 @@
 		loadingSubtitles = false,
 		activeTrackUrl,
 		accent,
+		backdrop,
 		startTime = 0,
 		currentTime = $bindable(0),
 		duration = $bindable(0),
@@ -61,6 +62,7 @@
 		loadingSubtitles?: boolean;
 		activeTrackUrl?: string;
 		accent?: string;
+		backdrop?: string;
 		startTime?: number;
 		currentTime?: number;
 		duration?: number;
@@ -423,9 +425,11 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="player"
+	class:playing={currentTime > 0}
 	class:fullscreen={isFullscreen}
 	class:cursor-hidden={cursorHidden}
 	style:--accent={accent ? `rgb(${accent})` : undefined}
+	style:--backdrop={backdrop ? `url(${backdrop})` : 'none'}
 	bind:this={containerEl}
 	onmousemove={showControls}
 	onmouseenter={showControls}
@@ -435,6 +439,8 @@
 	<!-- svelte-ignore a11y_media_has_caption -->
 	<video
 		bind:this={videoEl}
+		style:opacity={currentTime > 0 ? 1 : 0}
+		style:transition="opacity 0.5s"
 		playsinline
 		onclick={() => {
 			clearTimeout(clickTimeout);
@@ -495,7 +501,7 @@
 	{/if}
 
 	<!-- Gradient overlay when paused but backdrop not yet showing -->
-	<GradientOverlay visible={paused && !pausedIdle && !loading} />
+	<GradientOverlay visible={paused || loading} />
 
 	<!-- Single centered title — shown when paused or loading -->
 	<div
@@ -511,6 +517,10 @@
 
 	<div class="loading-spinner" class:visible={loading}>
 		<Spinner />
+	</div>
+
+	<div class="pause-icon" class:visible={paused && !loading && currentTime > 0}>
+		<Icon name="Pause" size={48} />
 	</div>
 
 	<div class="subtitles-container">
@@ -759,7 +769,7 @@
 						{/if}
 					</div>
 				{/if}
-				{#if subtitleTracks.length > 0 || loadingSubtitles}
+				{#if subtitleTracks.length > 0}
 					<div class="subtitle-menu-anchor">
 						<Button
 							variant="ghost"
@@ -877,10 +887,15 @@
 		position: relative;
 		width: 100%;
 		height: 100%;
-		background: #000;
+		background: var(--backdrop) center / cover no-repeat;
+		transition: background 0.8s ease;
 		overflow: hidden;
 		outline: none;
 		user-select: none;
+	}
+
+	.player.playing {
+		background: #000;
 	}
 
 	.player.fullscreen {
@@ -968,6 +983,23 @@
 	}
 
 	.loading-spinner.visible {
+		opacity: 1;
+	}
+
+	/* ── Pause icon ── */
+	.pause-icon {
+		position: absolute;
+		top: 75%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		z-index: 3;
+		pointer-events: none;
+		opacity: 0;
+		transition: opacity 150ms ease;
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.pause-icon.visible {
 		opacity: 1;
 	}
 
@@ -1119,6 +1151,7 @@
 		cursor: pointer;
 		margin: 0 12px;
 		z-index: 1;
+		outline: none;
 	}
 
 	.progress-track {

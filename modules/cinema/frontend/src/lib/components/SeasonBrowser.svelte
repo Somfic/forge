@@ -53,7 +53,9 @@
 			<div class="episode-grid">
 				{#each season.episodes as ep}
 					<MediaCard
-						src={ep.still_path ? imageUrl(ep.still_path) : ""}
+						src={ep.still_path
+							? imageUrl(ep.still_path, "w780")
+							: ""}
 						aspectRatio="16/9"
 						onclick={() =>
 							onselectepisode(
@@ -65,7 +67,9 @@
 							<Text size="xs" variant="muted">{ep.name}</Text>
 						{/snippet}
 						{#snippet bottomRight()}
-							<Text size="xs" variant="muted">S{season.season_number} E{ep.episode_number}</Text>
+							<Text size="xs" variant="muted"
+								>S{season.season_number} E{ep.episode_number}</Text
+							>
 						{/snippet}
 					</MediaCard>
 				{/each}

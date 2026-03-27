@@ -47,9 +47,8 @@
 <style>
 	.card {
 		position: relative;
-		width: 1000px;
+		width: 100%;
 		aspect-ratio: 16/9;
-		min-width: 0;
 		border-radius: 10px;
 		overflow: hidden;
 		background: var(--bg-surface, #1a1a2e);

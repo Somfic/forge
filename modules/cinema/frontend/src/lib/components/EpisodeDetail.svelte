@@ -1,21 +1,43 @@
 <script lang="ts">
-	import type { Season, Episode } from "$lib/api.gen";
+	import type { Season, Episode, WatchHistoryItem } from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
 	import { Button, MediaCard, Text } from "glow";
+	import PlayCard from "./PlayCard.svelte";
 
 	let {
 		season,
 		episode,
 		showTitle,
+		resumeEntry,
+		loadingStreams = false,
 		onback,
 		onselectepisode,
+		onplay,
 	}: {
 		season: Season;
 		episode: Episode;
 		showTitle: string;
+		resumeEntry?: WatchHistoryItem | null;
+		loadingStreams?: boolean;
 		onback: () => void;
 		onselectepisode: (season: number, episode: number) => void;
+		onplay?: () => void;
 	} = $props();
+
+	const canResume = $derived(
+		resumeEntry?.season === season.season_number &&
+		resumeEntry?.episode === episode.episode_number &&
+		resumeEntry?.info_hash &&
+		resumeEntry?.progress > 0
+	);
+
+	const remainingMin = $derived(
+		canResume && resumeEntry ? Math.ceil((resumeEntry.duration - resumeEntry.progress) / 60) : null
+	);
+
+	const progressPct = $derived(
+		canResume && resumeEntry ? (resumeEntry.progress / resumeEntry.duration) * 100 : 0
+	);
 </script>
 
 <div class="episode-strip">
@@ -44,6 +66,18 @@
 
 	{#if episode.overview}
 		<Text size="sm">{episode.overview}</Text>
+	{/if}
+
+	{#if onplay}
+		<PlayCard
+			image={episode.still_path ? imageUrl(episode.still_path, "w780") : undefined}
+			label="S{season.season_number} E{episode.episode_number}"
+			action={canResume ? "Continue" : episode.name ?? "Play"}
+			remaining={remainingMin ? `${remainingMin} min left` : undefined}
+			progress={progressPct}
+			loading={loadingStreams}
+			onclick={onplay}
+		/>
 	{/if}
 </div>
 

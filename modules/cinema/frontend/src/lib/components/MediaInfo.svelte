@@ -85,60 +85,143 @@
 			setLoading(false);
 		}
 	}
+
+	// ── Derived PlayCard props ──
+	const movieBackdrop = $derived(
+		item.backdrops?.[1]
+			? imageUrl(item.backdrops[1], "w780")
+			: item.backdrops?.[0]
+				? imageUrl(item.backdrops[0], "w780")
+				: undefined,
+	);
+
+	const movieResume = $derived(
+		resumeEntry?.info_hash && item.media_type === "movie",
+	);
+	const movieRemainingMin = $derived(
+		resumeEntry
+			? Math.ceil((resumeEntry.duration - resumeEntry.progress) / 60)
+			: 0,
+	);
+	const movieProgress = $derived(
+		resumeEntry && resumeEntry.duration > 0
+			? (resumeEntry.progress / resumeEntry.duration) * 100
+			: 0,
+	);
+
+	const tvResume = $derived(resumeEntry && resumeEntry.season > 0);
+	const resumeEpisode = $derived(
+		tvResume
+			? item.seasons
+					?.find((s) => s.season_number === resumeEntry!.season)
+					?.episodes?.find(
+						(e) => e.episode_number === resumeEntry!.episode,
+					)
+			: null,
+	);
+	const firstSeason = $derived(item.seasons?.[0]);
+	const firstEpisode = $derived(firstSeason?.episodes?.[0]);
+
+	const tvImage = $derived(
+		tvResume && resumeEpisode?.still_path
+			? imageUrl(resumeEpisode.still_path, "w780")
+			: firstEpisode?.still_path
+				? imageUrl(firstEpisode.still_path, "w780")
+				: undefined,
+	);
+	const tvLabel = $derived(
+		tvResume
+			? `S${resumeEntry!.season} E${resumeEntry!.episode}`
+			: firstSeason && firstEpisode
+				? `S${firstSeason.season_number} E${firstEpisode.episode_number}`
+				: undefined,
+	);
+	const tvAction = $derived(
+		tvResume
+			? (resumeEpisode?.name ?? "Continue")
+			: (firstEpisode?.name ?? "Start Watching"),
+	);
+	const tvRemaining = $derived(
+		tvResume
+			? `${Math.ceil((resumeEntry!.duration - resumeEntry!.progress) / 60)} min left`
+			: undefined,
+	);
+	const tvProgress = $derived(
+		tvResume && resumeEntry!.duration > 0
+			? (resumeEntry!.progress / resumeEntry!.duration) * 100
+			: 0,
+	);
+	const tvOnclick = $derived(
+		tvResume && onselectepisode
+			? () => onselectepisode!(resumeEntry!.season, resumeEntry!.episode)
+			: firstSeason && firstEpisode && onselectepisode
+				? () =>
+						onselectepisode!(
+							firstSeason!.season_number,
+							firstEpisode!.episode_number,
+						)
+				: undefined,
+	);
 </script>
 
 <div class="sidebar">
-	{#if item.logo_path}
-		<img
-			class="logo"
-			src={imageUrl(item.logo_path, "original")}
-			alt={item.title}
-		/>
-	{:else}
-		<h1 class="title">{item.title}</h1>
-	{/if}
-
-	<div class="meta">
-		{#if item.release_date}
-			<Text as="span" variant="secondary" size="sm"
-				>{item.release_date.slice(0, 4)}
-			</Text>
-		{/if}
-		{#if item.runtime}
-			<Text as="span" variant="secondary" size="sm"
-				>{item.runtime} min
-			</Text>
-		{/if}
-		{#if item.seasons}
-			<Text as="span" variant="secondary" size="sm">
-				{item.seasons.length} season{item.seasons.length > 1 ? "s" : ""}
-			</Text>
-		{/if}
-		{#if item.rating}
-			<Text as="span" variant="secondary" size="sm">
-				★ {item.rating.toFixed(1)}
-			</Text>
+	<div class="title-area">
+		{#if item.logo_path}
+			<img
+				class="logo"
+				src={imageUrl(item.logo_path, "original")}
+				alt={item.title}
+			/>
+		{:else}
+			<h1 class="title">{item.title}</h1>
 		{/if}
 	</div>
 
 	<div class="actions-row">
-		<span class:favorited={isFavorite}>
-			<Button
-				variant="ghost"
-				icon="Heart"
-				loading={favoriteLoading}
-				onclick={() =>
-					toggleCollection(
-						"favorites",
-						isFavorite,
-						(v) => (favoriteLoading = v),
-						(v) => (isFavorite = v),
-					)}
-			/>
-		</span>
+		<div class="meta">
+			{#if item.release_date}
+				<Text as="span" variant="secondary" size="sm"
+					>{item.release_date.slice(0, 4)}</Text
+				>
+			{/if}
+			{#if item.runtime}
+				<Text as="span" variant="secondary" size="sm"
+					>{Math.floor(item.runtime / 60)}h {item.runtime %
+						60}min</Text
+				>
+			{/if}
+			{#if item.seasons}
+				<Text as="span" variant="secondary" size="sm">
+					{item.seasons.length} season{item.seasons.length > 1
+						? "s"
+						: ""}
+				</Text>
+			{/if}
+			{#if item.rating}
+				<Text as="span" variant="secondary" size="sm"
+					>★ {item.rating.toFixed(1)}</Text
+				>
+			{/if}
+		</div>
 		<Button
 			variant="ghost"
-			icon={onWatchlist ? "BookmarkCheck" : "Bookmark"}
+			icon="Heart"
+			tooltip={isFavorite ? "Remove from favorites" : "Add to favorites"}
+			iconFilled={isFavorite}
+			loading={favoriteLoading}
+			onclick={() =>
+				toggleCollection(
+					"favorites",
+					isFavorite,
+					(v) => (favoriteLoading = v),
+					(v) => (isFavorite = v),
+				)}
+		/>
+		<Button
+			variant="ghost"
+			icon="Bookmark"
+			iconFilled={onWatchlist}
+			tooltip={onWatchlist ? "Remove from watchlist" : "Add to watchlist"}
 			loading={watchlistLoading}
 			onclick={() =>
 				toggleCollection(
@@ -148,107 +231,41 @@
 					(v) => (onWatchlist = v),
 				)}
 		/>
-		<Button
-			variant="ghost"
-			icon={isWatched ? "CircleCheck" : "Circle"}
-			loading={watchedLoading}
-			onclick={() =>
-				toggleCollection(
-					"watched",
-					isWatched,
-					(v) => (watchedLoading = v),
-					(v) => (isWatched = v),
-				)}
-		/>
+		{#if onselectseason}
+			<Button
+				variant="ghost"
+				icon="LayoutGrid"
+				tooltip="Browse episodes"
+				onclick={() => onselectseason(item.seasons![0].season_number)}
+			/>
+		{/if}
 	</div>
 
-	<!-- {#if item.overview}
-		<Text size="sm">{item.overview}</Text>
-	{/if} -->
-
-	{#if item.media_type === "movie"}
-		<div class="play-row">
-			{#if resumeEntry?.info_hash && onresume}
-				{@const remainingMin = Math.ceil(
-					(resumeEntry.duration - resumeEntry.progress) / 60,
-				)}
-				<PlayCard
-					image={item.backdrops?.[1]
-						? imageUrl(item.backdrops[1], "w780")
-						: item.backdrops?.[0]
-							? imageUrl(item.backdrops[0], "w780")
-							: undefined}
-					label={item.title}
-					action={item.tagline ?? "Continue"}
-					remaining="{remainingMin} min left"
-					progress={(resumeEntry.progress / resumeEntry.duration) *
-						100}
-					onclick={onresume}
-				/>
-			{:else if onwatch}
-				<PlayCard
-					image={item.backdrops?.[1]
-						? imageUrl(item.backdrops[1], "w780")
-						: item.backdrops?.[0]
-							? imageUrl(item.backdrops[0], "w780")
-							: undefined}
-					label={item.title}
-					action={item.tagline ?? "Watch"}
-					loading={loadingStreams}
-					onclick={onwatch}
-				/>
-			{/if}
-		</div>
+	{#if item.media_type === "movie" && (movieResume ? onresume : onwatch)}
+		<PlayCard
+			image={movieBackdrop}
+			label={item.title}
+			action={movieResume
+				? (item.tagline ?? "Continue")
+				: (item.tagline ?? "Watch")}
+			remaining={movieResume
+				? `${movieRemainingMin} min left`
+				: undefined}
+			progress={movieResume ? movieProgress : 0}
+			loading={!movieResume && loadingStreams}
+			onclick={movieResume ? onresume! : onwatch!}
+		/>
 	{/if}
 
-	{#if item.seasons?.length}
-		<div class="play-row">
-			{#if resumeEntry?.info_hash && onresume}
-				{@const remainingMin = Math.ceil(
-					(resumeEntry.duration - resumeEntry.progress) / 60,
-				)}
-				{@const resumeEpisode = item.seasons
-					?.find((s) => s.season_number === resumeEntry.season)
-					?.episodes?.find(
-						(e) => e.episode_number === resumeEntry.episode,
-					)}
-				<PlayCard
-					image={resumeEpisode?.still_path
-						? imageUrl(resumeEpisode.still_path, "w780")
-						: undefined}
-					label={`S${resumeEntry.season} E${resumeEntry.episode}`}
-					action={resumeEpisode?.name ?? "Continue"}
-					remaining="{remainingMin} min left"
-					progress={(resumeEntry.progress / resumeEntry.duration) *
-						100}
-					onclick={onresume}
-				/>
-			{:else if item.seasons[0]?.episodes?.[0] && onselectepisode}
-				{@const firstSe = item.seasons[0]}
-				{@const firstEp = firstSe.episodes[0]}
-				<PlayCard
-					image={firstEp.still_path
-						? imageUrl(firstEp.still_path, "w780")
-						: undefined}
-					label={`S${firstSe.season_number} E${firstEp.episode_number}`}
-					action={firstEp.name ?? "Continue"}
-					onclick={() =>
-						onselectepisode(
-							item.seasons![0].season_number,
-							firstEp.episode_number,
-						)}
-				/>
-			{/if}
-
-			{#if onselectseason}
-				<Button
-					variant="ghost"
-					icon="LayoutGrid"
-					onclick={() =>
-						onselectseason(item.seasons![0].season_number)}
-				/>
-			{/if}
-		</div>
+	{#if item.seasons?.length && tvOnclick}
+		<PlayCard
+			image={tvImage}
+			label={tvLabel}
+			action={tvAction}
+			remaining={tvRemaining}
+			progress={tvProgress}
+			onclick={tvOnclick}
+		/>
 	{/if}
 
 	<!-- {#if similarItems.length > 0}
@@ -279,9 +296,16 @@
 		width: 40vw;
 		min-height: 100vh;
 		padding: 2rem;
-		padding-top: 15vh;
 		display: flex;
 		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.title-area {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
 		gap: 0.75rem;
 	}
 
@@ -303,28 +327,15 @@
 		display: flex;
 		gap: 0.75rem;
 		align-items: center;
-		justify-content: center;
-	}
-
-	/* ── Play row ── */
-	.play-row {
-		display: flex;
-		gap: 0.5rem;
-		margin-top: auto;
-		align-self: flex-end;
-		align-items: stretch;
-		max-width: 100%;
-	}
-
-	.favorited :global(svg) {
-		color: #ef4444;
-		fill: #ef4444;
+		margin-right: auto;
 	}
 
 	.actions-row {
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
+		margin-top: auto;
+		justify-content: flex-end;
 	}
 
 	.genres {

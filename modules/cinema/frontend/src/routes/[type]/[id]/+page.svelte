@@ -128,7 +128,7 @@
 			.then((res) => {
 				item = res.data;
 				if (selectedSeason !== null && selectedEpisode !== null) {
-					loadEpisodeStreams(selectedSeason, selectedEpisode);
+					// Episode was selected via URL params — navigate to episode detail
 				}
 				// Fetch similar + watch history in background
 				fetchSimilar(type, id)
@@ -158,7 +158,6 @@
 		selectedEpisode = episode;
 		streams = [];
 		updateParams();
-		loadEpisodeStreams(season, episode);
 	}
 
 	function goBack() {
@@ -193,7 +192,7 @@
 		finally { loadingStreams = false; }
 	}
 
-	async function loadEpisodeStreams(season: number, episode: number) {
+	async function loadAndPlayEpisodeStreams(season: number, episode: number) {
 		if (!item) return;
 		loadingStreams = true;
 		try {
@@ -206,6 +205,15 @@
 	async function switchStream(stream: Stream) {
 		playerStartTime = playerTime;
 		play(stream, true);
+	}
+
+	function playEpisode() {
+		if (!item || selectedSeason == null || selectedEpisode == null) return;
+		if (resumeEntry?.info_hash && resumeEntry.season === selectedSeason && resumeEntry.episode === selectedEpisode) {
+			resume();
+		} else {
+			loadAndPlayEpisodeStreams(selectedSeason, selectedEpisode);
+		}
 	}
 
 	async function resume() {
@@ -394,8 +402,11 @@
 					season={activeSeason}
 					episode={activeEpisode}
 					showTitle={item.title}
+					{resumeEntry}
+					{loadingStreams}
 					onback={goBack}
 					onselectepisode={selectEpisode}
+					onplay={playEpisode}
 				/>
 			{/if}
 		</div>
@@ -414,6 +425,7 @@
 				{loadingSubtitles}
 				{activeTrackUrl}
 				accent={accentColor}
+				backdrop={item?.backdrops?.[0] ? imageUrl(item.backdrops[0], "original") : undefined}
 				startTime={playerStartTime}
 				{streams}
 				activeStreamHash={selectedStream?.info_hash}

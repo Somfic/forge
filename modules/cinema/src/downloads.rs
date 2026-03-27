@@ -1,15 +1,13 @@
 use std::sync::Arc;
-use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 use utoipa::ToSchema;
 
 use forge::AppContext;
 
 use crate::config::CinemaConfig;
-use crate::torrentio::StremioClient;
+use crate::torrent::TorrentEngine;
 
 #[derive(Debug, Serialize, Deserialize, ToSchema, sqlx::FromRow)]
 pub struct Download {
@@ -34,7 +32,6 @@ pub struct Download {
 
 pub struct DownloadManager {
     ctx: AppContext,
-    config: CinemaConfig,
     semaphore: Arc<Semaphore>,
 }
 
@@ -43,7 +40,6 @@ impl DownloadManager {
         let permits = config.max_concurrent_downloads;
         Self {
             ctx,
-            config,
             semaphore: Arc::new(Semaphore::new(permits)),
         }
     }
@@ -74,12 +70,11 @@ impl DownloadManager {
                 let permit = self.semaphore.clone().acquire_owned().await;
                 if let Ok(permit) = permit {
                     let ctx = self.ctx.clone();
-                    let stremio_url = self.config.stremio_url.clone();
                     tokio::spawn(async move {
-                        download_file(ctx, &stremio_url, download).await;
+                        download_file(ctx, download).await;
                         drop(permit);
                     });
-                    continue; // Check for more immediately
+                    continue;
                 }
             }
 
@@ -98,7 +93,7 @@ impl DownloadManager {
     }
 }
 
-async fn download_file(ctx: AppContext, stremio_url: &str, download: Download) {
+async fn download_file(ctx: AppContext, download: Download) {
     let id = download.id;
     tracing::info!(
         id,
@@ -112,7 +107,7 @@ async fn download_file(ctx: AppContext, stremio_url: &str, download: Download) {
         .execute(&ctx.db)
         .await;
 
-    match do_download(&ctx, stremio_url, &download).await {
+    match do_download(&ctx, &download).await {
         Ok(()) => {
             tracing::info!(id, title = download.title, "Download completed");
             let _ = sqlx::query(
@@ -133,125 +128,45 @@ async fn download_file(ctx: AppContext, stremio_url: &str, download: Download) {
     }
 }
 
-async fn do_download(
-    ctx: &AppContext,
-    stremio_url: &str,
-    download: &Download,
-) -> forge::Result<()> {
-    let stremio = StremioClient::new(ctx.http.clone(), stremio_url.to_string());
-    let url = stremio.start(&download.info_hash, download.file_idx).await?;
+async fn do_download(ctx: &AppContext, download: &Download) -> forge::Result<()> {
+    let engine = TorrentEngine::get();
+    let handle = engine
+        .start(&download.info_hash, download.file_idx as usize)
+        .await?;
 
-    // Use a client with no overall timeout (just connect timeout)
-    let client = reqwest::Client::builder()
-        .connect_timeout(std::time::Duration::from_secs(30))
-        .read_timeout(std::time::Duration::from_secs(300))
-        .build()
-        .map_err(|e| forge::Error::Generic(e.to_string()))?;
+    // Poll progress until complete
+    loop {
+        let (downloaded, total) = handle.progress();
 
-    // Retry a few times — Stremio may need time to start the torrent
-    let mut resp = None;
-    for attempt in 0..5 {
-        if attempt > 0 {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        }
-        match client.get(&url).send().await {
-            Ok(r) if r.status().is_success() => {
-                resp = Some(r);
-                break;
-            }
-            Ok(r) => {
-                tracing::warn!("Download attempt {}: status {}", attempt + 1, r.status());
-            }
-            Err(e) => {
-                tracing::warn!("Download attempt {}: {}", attempt + 1, e);
-            }
-        }
-    }
-
-    let resp = resp.ok_or_else(|| {
-        forge::Error::Generic("Failed to connect to stream after retries".into())
-    })?;
-
-    // Get total size from Content-Length
-    let total_bytes = resp.content_length().map(|v| v as i64);
-    if let Some(total) = total_bytes {
-        tracing::info!(
-            id = download.id,
-            total_mb = total / 1_000_000,
-            "Download size determined"
-        );
-        let _ = sqlx::query("UPDATE downloads SET total_bytes = ? WHERE id = ?")
-            .bind(total)
+        let _ = sqlx::query("UPDATE downloads SET downloaded_bytes = ?, total_bytes = ? WHERE id = ?")
+            .bind(downloaded as i64)
+            .bind(total as i64)
             .bind(download.id)
             .execute(&ctx.db)
             .await;
-    } else {
-        tracing::warn!(id = download.id, "No Content-Length header — progress will be unknown");
-    }
 
-    // Create parent directories
-    let full_path = ctx.storage.join(&download.file_path);
-    if let Some(parent) = full_path.parent() {
-        tokio::fs::create_dir_all(parent).await?;
-    }
-
-    // Stream to file with buffered writer
-    let file = tokio::fs::File::create(&full_path).await?;
-    let mut writer = tokio::io::BufWriter::with_capacity(256 * 1024, file);
-    let mut downloaded: i64 = 0;
-    let mut last_db_update = Instant::now();
-
-    let mut stream = resp.bytes_stream();
-    use futures::StreamExt;
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| forge::Error::Generic(e.to_string()))?;
-        writer.write_all(&chunk).await?;
-        downloaded += chunk.len() as i64;
-
-        // Update DB every 3 seconds
-        if last_db_update.elapsed().as_secs() >= 3 {
-            let pct = total_bytes.map(|t| downloaded * 100 / t).unwrap_or(0);
-            tracing::debug!(
-                id = download.id,
-                downloaded_mb = downloaded / 1_000_000,
-                pct,
-                "Download progress"
-            );
-
-            let _ = sqlx::query("UPDATE downloads SET downloaded_bytes = ? WHERE id = ?")
-                .bind(downloaded)
+        // Check cancellation
+        let status: Option<(String,)> =
+            sqlx::query_as("SELECT status FROM downloads WHERE id = ?")
                 .bind(download.id)
-                .execute(&ctx.db)
-                .await;
+                .fetch_optional(&ctx.db)
+                .await
+                .unwrap_or(None);
 
-            // Check if cancelled
-            let status: Option<(String,)> =
-                sqlx::query_as("SELECT status FROM downloads WHERE id = ?")
-                    .bind(download.id)
-                    .fetch_optional(&ctx.db)
-                    .await
-                    .unwrap_or(None);
-
-            if let Some((s,)) = status {
-                if s == "cancelled" {
-                    let _ = tokio::fs::remove_file(&full_path).await;
-                    return Err(forge::Error::Generic("Download cancelled".into()));
-                }
+        if let Some((s,)) = status {
+            if s == "cancelled" {
+                engine.stop(&download.info_hash).await;
+                return Err(forge::Error::Generic("Download cancelled".into()));
             }
-
-            last_db_update = Instant::now();
         }
+
+        let stats = handle.managed.stats();
+        if stats.finished {
+            break;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
-
-    writer.flush().await?;
-
-    // Final progress update
-    let _ = sqlx::query("UPDATE downloads SET downloaded_bytes = ? WHERE id = ?")
-        .bind(downloaded)
-        .bind(download.id)
-        .execute(&ctx.db)
-        .await;
 
     Ok(())
 }

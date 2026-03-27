@@ -124,6 +124,11 @@ impl Platform {
             .with_graceful_shutdown(shutdown_signal())
             .await?;
 
+        // Stop modules
+        for module in &self.modules {
+            module.on_stop().await;
+        }
+
         // Kill dev servers on shutdown
         for mut child in dev_children {
             let _ = child.kill().await;

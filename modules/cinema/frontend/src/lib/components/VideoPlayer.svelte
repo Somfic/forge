@@ -13,6 +13,12 @@
 		text: string;
 	}
 
+	interface AudioTrack {
+		id: number;
+		name: string;
+		lang?: string;
+	}
+
 	interface SubtitleTrack {
 		id: string;
 		language: string;
@@ -33,14 +39,20 @@
 		subtitleTracks = [],
 		streams = [],
 		activeStreamHash,
+		audioTracks = [],
+		activeAudioTrack = 0,
 		onClose,
 		onSubtitleSelect,
 		onSubtitleOff,
 		onStreamSelect,
+		onAudioSelect,
+		onSeek,
 		loadingSubtitles = false,
 		activeTrackUrl,
 		accent,
 		backdrop,
+		knownDuration = 0,
+		timeOffset = 0,
 		startTime = 0,
 		currentTime = $bindable(0),
 		duration = $bindable(0),
@@ -55,14 +67,20 @@
 		subtitleTracks?: SubtitleTrack[];
 		streams?: StreamOption[];
 		activeStreamHash?: string;
+		audioTracks?: AudioTrack[];
+		activeAudioTrack?: number;
 		onClose?: () => void;
 		onSubtitleSelect?: (track: SubtitleTrack) => void;
 		onSubtitleOff?: () => void;
 		onStreamSelect?: (stream: StreamOption) => void;
+		onAudioSelect?: (track: AudioTrack) => void;
+		onSeek?: (time: number) => void;
 		loadingSubtitles?: boolean;
 		activeTrackUrl?: string;
 		accent?: string;
 		backdrop?: string;
+		knownDuration?: number;
+		timeOffset?: number;
 		startTime?: number;
 		currentTime?: number;
 		duration?: number;
@@ -148,13 +166,6 @@
 			})),
 	);
 
-	interface AudioTrack {
-		id: number;
-		name: string;
-		lang?: string;
-	}
-	let audioTracks = $state<AudioTrack[]>([]);
-	let activeAudioTrack = $state(0);
 	let subtitleOffset = $state(defaultOffset);
 	let cursorHidden = $state(false);
 	let pausedIdle = $state(false);
@@ -213,6 +224,15 @@
 		}
 	}
 
+	function seekTo(time: number) {
+		if (onSeek) {
+			currentTime = time;
+			onSeek(time);
+		} else if (videoEl) {
+			videoEl.currentTime = time;
+		}
+	}
+
 	function seek(e: MouseEvent & { currentTarget: HTMLDivElement }) {
 		if (!videoEl || !duration) return;
 		const rect = e.currentTarget.getBoundingClientRect();
@@ -220,7 +240,7 @@
 			0,
 			Math.min(1, (e.clientX - rect.left) / rect.width),
 		);
-		videoEl.currentTime = pct * duration;
+		seekTo(pct * duration);
 	}
 
 	function handleProgressDown(
@@ -238,7 +258,7 @@
 				0,
 				Math.min(1, (ev.clientX - rect.left) / rect.width),
 			);
-			videoEl.currentTime = pct * duration;
+			seekTo(pct * duration);
 		};
 
 		const onUp = () => {
@@ -313,15 +333,12 @@
 				break;
 			case "ArrowLeft":
 				e.preventDefault();
-				videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
+				seekTo(Math.max(0, currentTime - 10));
 				showControls();
 				break;
 			case "ArrowRight":
 				e.preventDefault();
-				videoEl.currentTime = Math.min(
-					duration,
-					videoEl.currentTime + 10,
-				);
+				seekTo(Math.min(duration, currentTime + 10));
 				showControls();
 				break;
 			case "ArrowUp":
@@ -366,22 +383,13 @@
 			hls.on(Hls.Events.MANIFEST_PARSED, () => {
 				loading = false;
 				if (autoplay) videoEl?.play().catch(() => {});
-				// Capture audio tracks
-				if (hls && hls.audioTracks.length > 1) {
-					audioTracks = hls.audioTracks.map((t: any) => ({
-						id: t.id,
-						name: t.name || `Track ${t.id + 1}`,
-						lang: t.lang,
-					}));
-					activeAudioTrack = hls.audioTrack;
-				}
 			});
 			hls.on(Hls.Events.ERROR, (_event: any, data: any) => {
 				if (data.fatal) {
 					loading = false;
 					hls?.destroy();
 					hls = null;
-					streamError = "Stream failed. Try restarting Stremio.";
+					streamError = "Stream failed. The torrent may not have enough peers.";
 				}
 			});
 		} else if (
@@ -397,9 +405,9 @@
 
 	function handleTimeUpdate() {
 		if (!videoEl || seeking) return;
-		currentTime = videoEl.currentTime;
+		currentTime = videoEl.currentTime + timeOffset;
 		if (videoEl.buffered.length > 0) {
-			buffered = videoEl.buffered.end(videoEl.buffered.length - 1);
+			buffered = videoEl.buffered.end(videoEl.buffered.length - 1) + timeOffset;
 		}
 	}
 
@@ -482,7 +490,9 @@
 		}}
 		onloadedmetadata={() => {
 			if (videoEl) {
-				duration = videoEl.duration;
+				duration = (knownDuration > 0 && (!isFinite(videoEl.duration) || videoEl.duration < 30))
+					? knownDuration
+					: videoEl.duration;
 				if (startTime > 0) {
 					videoEl.currentTime = startTime;
 				}
@@ -491,7 +501,7 @@
 		oncanplay={() => (loading = false)}
 		onwaiting={() => (loading = true)}
 		onerror={() => {
-			streamError = "Stream failed. Try restarting Stremio.";
+			streamError = "Stream failed. The torrent may not have enough peers.";
 			loading = false;
 		}}
 	></video>
@@ -662,10 +672,19 @@
 				{#if audioTracks.length > 1}
 					<DropdownMenu
 						items={audioTracks.map((track) => ({
-							label: `${track.name}${track.lang ? ` (${track.lang})` : ""}`,
-							shortcut: track.id === activeAudioTrack ? "●" : undefined,
+							label: track.name,
+							shortcut: track.id === activeAudioTrack ? "●" : track.lang ?? undefined,
 							onclick: () => {
-								if (hls) hls.audioTrack = track.id;
+								if (onAudioSelect) {
+									onAudioSelect(track);
+								} else if (videoEl) {
+									const native = (videoEl as any).audioTracks;
+									if (native) {
+										for (let i = 0; i < native.length; i++) {
+											native[i].enabled = i === track.id;
+										}
+									}
+								}
 								activeAudioTrack = track.id;
 							},
 						}))}

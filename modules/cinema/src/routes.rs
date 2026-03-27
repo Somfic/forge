@@ -16,7 +16,7 @@ use crate::streams;
 use crate::streams::Stream;
 use crate::subtitles::{SubtitleCue, SubtitleTrack};
 use crate::tmdb::{MediaItem, MediaType, SearchResult, TmdbClient};
-use crate::torrentio::StremioClient;
+use crate::torrent::TorrentEngine;
 
 pub fn router() -> OpenApiRouter<AppContext> {
     OpenApiRouter::new()
@@ -41,6 +41,9 @@ pub fn router() -> OpenApiRouter<AppContext> {
         .routes(routes!(list_downloads))
         .routes(routes!(delete_download))
         .routes(routes!(estimate_download))
+        .route("/stream/{info_hash}/{file_idx}", axum::routing::get(stream_file))
+        .route("/stream/{info_hash}/{file_idx}/audio", axum::routing::get(stream_audio_tracks))
+        .route("/stream/{info_hash}/{file_idx}/remux", axum::routing::get(stream_remux))
         .route("/image/{*path}", axum::routing::get(image_proxy))
         .route("/files/{*path}", axum::routing::get(serve_file))
 }
@@ -135,32 +138,15 @@ struct StartStreamResponse {
     responses((status = 200, body = StartStreamResponse))
 )]
 async fn start_stream(
-    State(ctx): State<AppContext>,
+    State(_ctx): State<AppContext>,
     Path((info_hash, file_idx)): Path<(String, i64)>,
 ) -> Result<Json<StartStreamResponse>, AppError> {
-    // Check for completed local download
-    let local: Option<Download> = sqlx::query_as(
-        "SELECT * FROM downloads WHERE info_hash = ? AND file_idx = ? AND status = 'completed' LIMIT 1",
-    )
-    .bind(&info_hash)
-    .bind(file_idx)
-    .fetch_optional(&ctx.db)
-    .await
-    .map_err(|e| forge::Error::Generic(e.to_string()))?;
+    // Start torrent via native engine (idempotent — if already downloaded,
+    // librqbit's fastresume picks it up instantly from disk)
+    let engine = TorrentEngine::get();
+    engine.start(&info_hash, file_idx as usize).await?;
 
-    if let Some(dl) = local {
-        let full_path = ctx.storage.join(&dl.file_path);
-        if full_path.exists() {
-            return Ok(Json(StartStreamResponse {
-                url: format!("/cinema/api/files/{}", dl.file_path),
-                local: true,
-            }));
-        }
-    }
-
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
-    let torrentio = StremioClient::new(ctx.http.clone(), config.stremio_url.clone());
-    let url = torrentio.start(&info_hash, file_idx).await?;
+    let url = format!("/cinema/api/stream/{}/{}", info_hash, file_idx);
     Ok(Json(StartStreamResponse { url, local: false }))
 }
 
@@ -574,19 +560,18 @@ async fn delete_download(
         .map_err(|e| forge::Error::Generic(e.to_string()))?;
 
     if let Some(dl) = dl {
-        // If downloading, mark as cancelled so the worker stops
         if dl.status == "downloading" {
+            // Mark as cancelled so the download worker stops
             sqlx::query("UPDATE downloads SET status = 'cancelled' WHERE id = ?")
                 .bind(id)
                 .execute(&ctx.db)
                 .await
                 .map_err(|e| forge::Error::Generic(e.to_string()))?;
-            // Worker will clean up the file
-        } else {
-            // Delete file if exists
-            let full_path = ctx.storage.join(&dl.file_path);
-            let _ = tokio::fs::remove_file(&full_path).await;
         }
+
+        // Stop the torrent and delete its files
+        let engine = TorrentEngine::get();
+        engine.stop_and_delete(&dl.info_hash).await;
 
         sqlx::query("DELETE FROM downloads WHERE id = ?")
             .bind(id)
@@ -658,21 +643,112 @@ async fn estimate_download(
     Ok(Json(estimates))
 }
 
+async fn stream_file(
+    Path((info_hash, file_idx)): Path<(String, usize)>,
+    req: axum::http::Request<axum::body::Body>,
+) -> Result<axum::response::Response, AppError> {
+    let engine = TorrentEngine::get();
+
+    // Ensure the torrent is started
+    engine.start(&info_hash, file_idx).await?;
+
+    // Get a streaming reader (blocks on missing pieces, prioritizes sequential)
+    let reader = engine.stream(&info_hash, file_idx)?;
+    let total_size = reader.len;
+
+    let range_header = req
+        .headers()
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    serve_range_response(reader, total_size, range_header.as_deref(), "video/mp4")
+}
+
+async fn stream_audio_tracks(
+    Path((info_hash, file_idx)): Path<(String, usize)>,
+) -> Result<Json<forge::json::Value>, AppError> {
+    let engine = TorrentEngine::get();
+    let path = engine.file_path(&info_hash, file_idx)?;
+    let tracks = TorrentEngine::audio_tracks(&path).await;
+    let duration = TorrentEngine::probe_duration(&path).await;
+    Ok(Json(forge::json::json!({
+        "tracks": tracks,
+        "duration": duration,
+    })))
+}
+
+#[derive(Deserialize, IntoParams)]
+struct RemuxParams {
+    #[serde(default)]
+    audio: usize,
+    #[serde(default)]
+    t: f64,
+}
+
+async fn stream_remux(
+    Path((info_hash, file_idx)): Path<(String, usize)>,
+    Query(params): Query<RemuxParams>,
+) -> Result<axum::response::Response, AppError> {
+    let engine = TorrentEngine::get();
+    engine.start(&info_hash, file_idx).await?;
+    let path = engine.file_path(&info_hash, file_idx)?;
+
+    let mut args = Vec::new();
+    if params.t > 0.0 {
+        args.extend_from_slice(&["-ss".to_string(), format!("{:.3}", params.t)]);
+    }
+    args.extend_from_slice(&[
+        "-i".into(), path.to_str().unwrap_or("").into(),
+        "-map".into(), "0:v:0".into(),
+        "-map".into(), format!("0:a:{}", params.audio),
+        "-c".into(), "copy".into(),
+        "-f".into(), "mp4".into(),
+        "-movflags".into(), "frag_keyframe+empty_moov+default_base_moof".into(),
+        "pipe:1".into(),
+    ]);
+
+    let mut child = tokio::process::Command::new("ffmpeg")
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| forge::Error::Generic(format!("Failed to start ffmpeg: {e}")))?;
+
+    let stdout = child.stdout.take()
+        .ok_or_else(|| forge::Error::Generic("No ffmpeg stdout".into()))?;
+
+    let stream = tokio_util::io::ReaderStream::new(stdout);
+    let body = axum::body::Body::from_stream(stream);
+
+    Ok(axum::http::Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "video/mp4")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .body(body)
+        .unwrap())
+}
+
 async fn serve_file(
     State(ctx): State<AppContext>,
     Path(path): Path<String>,
-) -> Result<impl IntoResponse, AppError> {
+    req: axum::http::Request<axum::body::Body>,
+) -> Result<axum::response::Response, AppError> {
     if path.contains("..") {
         return Err(forge::Error::Generic("Invalid path".into()).into());
     }
     let full_path = ctx.storage.join(&path);
 
-    let metadata = tokio::fs::metadata(&full_path).await
+    let metadata = tokio::fs::metadata(&full_path)
+        .await
         .map_err(|_| forge::Error::Generic("File not found".into()))?;
 
-    let file = tokio::fs::read(&full_path).await
-        .map_err(|_| forge::Error::Generic("Failed to read file".into()))?;
+    let file = tokio::fs::File::open(&full_path)
+        .await
+        .map_err(|_| forge::Error::Generic("Failed to open file".into()))?;
 
+    let total_size = metadata.len();
     let content_type = if path.ends_with(".mp4") {
         "video/mp4"
     } else if path.ends_with(".mkv") {
@@ -681,15 +757,93 @@ async fn serve_file(
         "application/octet-stream"
     };
 
-    Ok((
-        [
-            (header::CONTENT_TYPE, content_type.to_string()),
-            (header::CONTENT_LENGTH, metadata.len().to_string()),
-            (header::ACCEPT_RANGES, "bytes".to_string()),
-            (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
-        ],
-        file,
-    ))
+    let range_header = req
+        .headers()
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    serve_range_response(file, total_size, range_header.as_deref(), content_type)
+}
+
+fn serve_range_response<R: tokio::io::AsyncRead + tokio::io::AsyncSeek + Send + Unpin + 'static>(
+    reader: R,
+    total_size: u64,
+    range_header: Option<&str>,
+    content_type: &str,
+) -> Result<axum::response::Response, AppError> {
+    use axum::body::Body;
+    use axum::http::Response;
+
+    if total_size == 0 {
+        return Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_LENGTH, 0)
+            .body(Body::empty())
+            .unwrap());
+    }
+
+    let (start, end) = if let Some(range) = range_header {
+        let range = range.trim_start_matches("bytes=");
+        let parts: Vec<&str> = range.splitn(2, '-').collect();
+        let start: u64 = parts[0].parse().unwrap_or(0).min(total_size - 1);
+        let end: u64 = if parts.len() > 1 && !parts[1].is_empty() {
+            parts[1].parse().unwrap_or(total_size - 1)
+        } else {
+            total_size - 1
+        };
+        (start, end.min(total_size - 1))
+    } else {
+        (0, total_size - 1)
+    };
+
+    let content_length = end.saturating_sub(start) + 1;
+
+    let body = Body::from_stream(async_stream::stream! {
+        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        let mut reader = std::pin::pin!(reader);
+        if start > 0 {
+            if let Err(e) = reader.as_mut().seek(std::io::SeekFrom::Start(start)).await {
+                yield Err(e);
+                return;
+            }
+        }
+        let mut remaining = content_length;
+        let mut buf = vec![0u8; 64 * 1024];
+        while remaining > 0 {
+            let to_read = (buf.len() as u64).min(remaining) as usize;
+            match reader.as_mut().read(&mut buf[..to_read]).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    remaining -= n as u64;
+                    yield Ok::<_, std::io::Error>(bytes::Bytes::copy_from_slice(&buf[..n]));
+                }
+                Err(e) => {
+                    yield Err(e);
+                    break;
+                }
+            }
+        }
+    });
+
+    if range_header.is_some() {
+        Ok(Response::builder()
+            .status(StatusCode::PARTIAL_CONTENT)
+            .header(header::CONTENT_TYPE, content_type)
+            .header(header::CONTENT_LENGTH, content_length)
+            .header(header::CONTENT_RANGE, format!("bytes {start}-{end}/{total_size}"))
+            .header(header::ACCEPT_RANGES, "bytes")
+            .body(body)
+            .unwrap())
+    } else {
+        Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, content_type)
+            .header(header::CONTENT_LENGTH, total_size)
+            .header(header::ACCEPT_RANGES, "bytes")
+            .body(body)
+            .unwrap())
+    }
 }
 
 struct AppError(forge::Error);

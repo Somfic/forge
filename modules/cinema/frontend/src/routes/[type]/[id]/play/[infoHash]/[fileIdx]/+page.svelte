@@ -8,6 +8,13 @@
 	import { getDetails, imageUrl, playStream } from "$lib/utils";
 	import VideoPlayer from "$lib/components/VideoPlayer.svelte";
 
+	interface AudioTrackInfo {
+		index: number;
+		stream_index: number;
+		name: string;
+		language: string | null;
+	}
+
 	let item = $state<MediaItem | null>(null);
 	let streamUrl = $state<string | null>(null);
 	let subtitleTracks = $state<SubtitleTrack[]>([]);
@@ -15,6 +22,10 @@
 	let activeTrackUrl = $state<string | undefined>(undefined);
 	let loadingSubtitles = $state(false);
 	let error = $state<string | null>(null);
+	let fileAudioTracks = $state<AudioTrackInfo[]>([]);
+	let activeAudioIdx = $state(0);
+	let mediaDuration = $state(0);
+	let remuxTimeOffset = $state(0);
 
 	const backdropUrls = $derived(
 		item?.backdrops?.map((b) => imageUrl(b, 'original')) ?? []
@@ -47,13 +58,17 @@
 	);
 
 	$effect(() => {
-		// Load media details + start stream in parallel
 		const detailsPromise = getDetails(mediaType, mediaId)
 			.then((res) => { item = res.data; })
 			.catch((e) => { error = e.message; });
 
 		const streamPromise = playStream(infoHash as string, fileIdx as number)
-			.then((result) => { streamUrl = result.url; })
+			.then(async (result) => {
+				streamUrl = result.url;
+				activeAudioIdx = 0;
+				remuxTimeOffset = 0;
+				pollAudioTracks(infoHash as string, fileIdx as number);
+			})
 			.catch((e) => { error = e.message; });
 
 		Promise.all([detailsPromise, streamPromise]).then(() => {
@@ -101,6 +116,42 @@
 		activeTrackUrl = undefined;
 	}
 
+	let audioPollTimer: ReturnType<typeof setInterval> | undefined;
+
+	function pollAudioTracks(hash: string, idx: number) {
+		if (audioPollTimer) clearInterval(audioPollTimer);
+
+		const check = async () => {
+			try {
+				const res = await fetch(`/cinema/api/stream/${hash}/${idx}/audio`);
+				const data = await res.json();
+				const tracks: AudioTrackInfo[] = data.tracks ?? [];
+				if (tracks.length > 1) {
+					fileAudioTracks = tracks;
+					if (data.duration) mediaDuration = data.duration;
+					clearInterval(audioPollTimer);
+					audioPollTimer = undefined;
+				}
+			} catch {}
+		};
+
+		check();
+		audioPollTimer = setInterval(check, 10_000);
+	}
+
+	function switchAudio(idx: number) {
+		activeAudioIdx = idx;
+		remuxTimeOffset = 0;
+		streamUrl = `/cinema/api/stream/${infoHash}/${fileIdx}/remux?audio=${idx}`;
+	}
+
+	function seekRemux(time: number) {
+		remuxTimeOffset = time;
+		streamUrl = `/cinema/api/stream/${infoHash}/${fileIdx}/remux?audio=${activeAudioIdx}&t=${time.toFixed(1)}`;
+	}
+
+	const isRemux = $derived(streamUrl?.includes('/remux') ?? false);
+
 	function close() {
 		goto(`/cinema/${mediaType}/${mediaId}`);
 	}
@@ -119,6 +170,17 @@
 			title={playerTitle}
 			topline={playerTopline}
 			titleImage={item?.logo_path ? imageUrl(item.logo_path, 'original') : undefined}
+
+			audioTracks={fileAudioTracks.map((t) => ({
+				id: t.stream_index,
+				name: t.name,
+				lang: t.language ?? undefined,
+			}))}
+			activeAudioTrack={activeAudioIdx}
+			onAudioSelect={(track) => switchAudio(track.id)}
+			onSeek={isRemux ? seekRemux : undefined}
+			knownDuration={isRemux ? mediaDuration : 0}
+			timeOffset={isRemux ? remuxTimeOffset : 0}
 
 			{subtitleTracks}
 			{loadingSubtitles}

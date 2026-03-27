@@ -52,6 +52,17 @@
 	let loadingSubtitles = $state(false);
 	let playingLocal = $state(false);
 
+	interface AudioTrackInfo {
+		index: number;
+		stream_index: number;
+		name: string;
+		language: string | null;
+	}
+	let fileAudioTracks = $state<AudioTrackInfo[]>([]);
+	let activeAudioIdx = $state(0);
+	let mediaDuration = $state(0);
+	let remuxTimeOffset = $state(0);
+
 	// ── Derived ──
 	const slideIndex = $derived(
 		selectedEpisode !== null ? 2 : selectedSeason !== null ? 1 : 0,
@@ -296,9 +307,13 @@
 		replaceState(u, {});
 
 		playStream(stream.info_hash, stream.file_idx)
-			.then((result) => {
-				streamUrl = result.url;
+			.then(async (result) => {
 				playingLocal = result.local;
+				streamUrl = result.url;
+				fileAudioTracks = [];
+				activeAudioIdx = 0;
+				remuxTimeOffset = 0;
+				pollAudioTracks(stream.info_hash, stream.file_idx);
 			})
 			.catch((e) => {
 				error = e.message;
@@ -306,6 +321,45 @@
 
 		loadSubtitles();
 	}
+
+	let audioPollTimer: ReturnType<typeof setInterval> | undefined;
+
+	function pollAudioTracks(infoHash: string, fileIdx: number) {
+		if (audioPollTimer) clearInterval(audioPollTimer);
+
+		const check = async () => {
+			try {
+				const res = await fetch(`/cinema/api/stream/${infoHash}/${fileIdx}/audio`);
+				const data = await res.json();
+				const tracks: AudioTrackInfo[] = data.tracks ?? [];
+				if (tracks.length > 1) {
+					fileAudioTracks = tracks;
+					if (data.duration) mediaDuration = data.duration;
+					clearInterval(audioPollTimer);
+					audioPollTimer = undefined;
+				}
+			} catch {}
+		};
+
+		check();
+		audioPollTimer = setInterval(check, 10_000);
+	}
+
+	function switchAudio(idx: number) {
+		if (!selectedStream) return;
+		activeAudioIdx = idx;
+		remuxTimeOffset = playerTime;
+		const t = playerTime > 0 ? `&t=${playerTime.toFixed(1)}` : '';
+		streamUrl = `/cinema/api/stream/${selectedStream.info_hash}/${selectedStream.file_idx}/remux?audio=${idx}${t}`;
+	}
+
+	function seekRemux(time: number) {
+		if (!selectedStream) return;
+		remuxTimeOffset = time;
+		streamUrl = `/cinema/api/stream/${selectedStream.info_hash}/${selectedStream.file_idx}/remux?audio=${activeAudioIdx}&t=${time.toFixed(1)}`;
+	}
+
+	const isRemux = $derived(streamUrl?.includes('/remux') ?? false);
 
 	async function loadSubtitles() {
 		if (!item) return;
@@ -345,11 +399,13 @@
 
 	function stopPlaying() {
 		saveProgress();
+		if (audioPollTimer) { clearInterval(audioPollTimer); audioPollTimer = undefined; }
 		selectedStream = null;
 		streamUrl = null;
 		subtitleTracks = [];
 		activeCues = [];
 		activeTrackUrl = undefined;
+		fileAudioTracks = [];
 		const u = new URL(window.location.href);
 		u.searchParams.delete("hash");
 		u.searchParams.delete("file");
@@ -516,6 +572,16 @@
 				titleImage={item?.logo_path
 					? imageUrl(item.logo_path, "original")
 					: undefined}
+				audioTracks={fileAudioTracks.map((t) => ({
+					id: t.stream_index,
+					name: t.name,
+					lang: t.language ?? undefined,
+				}))}
+				activeAudioTrack={activeAudioIdx}
+				onAudioSelect={(track) => switchAudio(track.id)}
+				onSeek={isRemux ? seekRemux : undefined}
+				knownDuration={isRemux ? mediaDuration : 0}
+				timeOffset={isRemux ? remuxTimeOffset : 0}
 				{subtitleTracks}
 				{loadingSubtitles}
 				{activeTrackUrl}

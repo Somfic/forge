@@ -20,6 +20,8 @@ pub trait Module: Send + Sync + 'static {
 
     async fn on_start(&self, ctx: AppContext) -> Result<()>;
 
+    async fn on_stop(&self) {}
+
     async fn health_check(&self, ctx: AppContext) -> Result<Vec<HealthCheck>> {
         Ok(vec![])
     }

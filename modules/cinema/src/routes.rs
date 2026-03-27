@@ -11,6 +11,8 @@ use utoipa_axum::routes;
 use forge::AppContext;
 
 use crate::config::CinemaConfig;
+use crate::downloads::Download;
+use crate::streams;
 use crate::streams::Stream;
 use crate::subtitles::{SubtitleCue, SubtitleTrack};
 use crate::tmdb::{MediaItem, MediaType, SearchResult, TmdbClient};
@@ -35,7 +37,12 @@ pub fn router() -> OpenApiRouter<AppContext> {
         .routes(routes!(remove_from_collection))
         .routes(routes!(get_collection))
         .routes(routes!(is_in_collection))
+        .routes(routes!(enqueue_download))
+        .routes(routes!(list_downloads))
+        .routes(routes!(delete_download))
+        .routes(routes!(estimate_download))
         .route("/image/{*path}", axum::routing::get(image_proxy))
+        .route("/files/{*path}", axum::routing::get(serve_file))
 }
 
 #[derive(Deserialize, IntoParams)]
@@ -121,6 +128,7 @@ async fn tv_streams(
 #[derive(Serialize, ToSchema)]
 struct StartStreamResponse {
     url: String,
+    local: bool,
 }
 
 #[utoipa::path(post, path = "/streams/start/{info_hash}/{file_idx}",
@@ -130,10 +138,30 @@ async fn start_stream(
     State(ctx): State<AppContext>,
     Path((info_hash, file_idx)): Path<(String, i64)>,
 ) -> Result<Json<StartStreamResponse>, AppError> {
+    // Check for completed local download
+    let local: Option<Download> = sqlx::query_as(
+        "SELECT * FROM downloads WHERE info_hash = ? AND file_idx = ? AND status = 'completed' LIMIT 1",
+    )
+    .bind(&info_hash)
+    .bind(file_idx)
+    .fetch_optional(&ctx.db)
+    .await
+    .map_err(|e| forge::Error::Generic(e.to_string()))?;
+
+    if let Some(dl) = local {
+        let full_path = ctx.storage.join(&dl.file_path);
+        if full_path.exists() {
+            return Ok(Json(StartStreamResponse {
+                url: format!("/cinema/api/files/{}", dl.file_path),
+                local: true,
+            }));
+        }
+    }
+
     let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
     let torrentio = StremioClient::new(ctx.http.clone(), config.stremio_url.clone());
     let url = torrentio.start(&info_hash, file_idx).await?;
-    Ok(Json(StartStreamResponse { url }))
+    Ok(Json(StartStreamResponse { url, local: false }))
 }
 
 #[utoipa::path(get, path = "/subtitles/movie/{id}", responses((status = 200, body = Vec<SubtitleTrack>)))]
@@ -429,6 +457,239 @@ async fn is_in_collection(
     Ok(Json(CollectionStatus {
         in_collection: count.0 > 0,
     }))
+}
+
+// ── Downloads ──
+
+#[derive(Deserialize, Serialize, ToSchema)]
+struct EnqueueDownloadRequest {
+    media_type: String,
+    tmdb_id: i64,
+    title: String,
+    poster_path: Option<String>,
+    #[serde(default)]
+    season: i64,
+    #[serde(default)]
+    episode: i64,
+    resolution: String,
+    info_hash: Option<String>,
+    file_idx: Option<i64>,
+}
+
+#[utoipa::path(post, path = "/downloads",
+    request_body = EnqueueDownloadRequest,
+    responses((status = 204))
+)]
+async fn enqueue_download(
+    State(ctx): State<AppContext>,
+    Json(body): Json<EnqueueDownloadRequest>,
+) -> Result<StatusCode, AppError> {
+    let (info_hash, file_idx) = if let (Some(hash), Some(idx)) = (&body.info_hash, body.file_idx) {
+        (hash.clone(), idx)
+    } else {
+        // Auto-select best stream at requested resolution
+        let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+        let tmdb = TmdbClient::new(&config, ctx.http.clone());
+        let mt = match body.media_type.as_str() {
+            "movie" => MediaType::Movie,
+            "tv" => MediaType::Tv,
+            _ => return Err(forge::Error::Generic("Invalid media type".into()).into()),
+        };
+        let item = tmdb.details(mt, body.tmdb_id).await?;
+        let imdb_id = item.imdb_id
+            .ok_or_else(|| forge::Error::Generic("No IMDB ID found".into()))?;
+
+        let path = if body.media_type == "tv" {
+            format!("series/{}:{}:{}", imdb_id, body.season, body.episode)
+        } else {
+            format!("movie/{}", imdb_id)
+        };
+
+        let all_streams = streams::aggregate(&ctx.http, &config.stream_sources, &path).await;
+        let stream = all_streams.iter()
+            .find(|s| s.resolution.as_deref() == Some(&body.resolution))
+            .or_else(|| all_streams.first())
+            .ok_or_else(|| forge::Error::Generic("No streams found".into()))?;
+
+        (stream.info_hash.clone(), stream.file_idx)
+    };
+
+    let file_path = if body.media_type == "tv" {
+        format!("tv/{}/s{}e{}.mp4", body.tmdb_id, body.season, body.episode)
+    } else {
+        format!("movies/{}.mp4", body.tmdb_id)
+    };
+
+    sqlx::query(
+        "INSERT INTO downloads (media_type, tmdb_id, title, poster_path, season, episode, resolution, info_hash, file_idx, file_path)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(media_type, tmdb_id, season, episode) DO UPDATE SET
+           info_hash = excluded.info_hash, file_idx = excluded.file_idx, resolution = excluded.resolution,
+           file_path = excluded.file_path, status = 'queued', error = NULL,
+           downloaded_bytes = 0, total_bytes = NULL, completed_at = NULL"
+    )
+    .bind(&body.media_type)
+    .bind(body.tmdb_id)
+    .bind(&body.title)
+    .bind(&body.poster_path)
+    .bind(body.season)
+    .bind(body.episode)
+    .bind(&body.resolution)
+    .bind(&info_hash)
+    .bind(file_idx)
+    .bind(&file_path)
+    .execute(&ctx.db)
+    .await
+    .map_err(|e| forge::Error::Generic(e.to_string()))?;
+
+    ctx.events.publish("download:enqueue", forge::json::json!({}));
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(get, path = "/downloads", responses((status = 200, body = Vec<Download>)))]
+async fn list_downloads(
+    State(ctx): State<AppContext>,
+) -> Result<Json<Vec<Download>>, AppError> {
+    let items = sqlx::query_as::<_, Download>(
+        "SELECT * FROM downloads ORDER BY created_at DESC"
+    )
+    .fetch_all(&ctx.db)
+    .await
+    .map_err(|e| forge::Error::Generic(e.to_string()))?;
+
+    Ok(Json(items))
+}
+
+#[utoipa::path(delete, path = "/downloads/{id}", responses((status = 204)))]
+async fn delete_download(
+    State(ctx): State<AppContext>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, AppError> {
+    // Get the download to find the file path
+    let dl: Option<Download> = sqlx::query_as("SELECT * FROM downloads WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&ctx.db)
+        .await
+        .map_err(|e| forge::Error::Generic(e.to_string()))?;
+
+    if let Some(dl) = dl {
+        // If downloading, mark as cancelled so the worker stops
+        if dl.status == "downloading" {
+            sqlx::query("UPDATE downloads SET status = 'cancelled' WHERE id = ?")
+                .bind(id)
+                .execute(&ctx.db)
+                .await
+                .map_err(|e| forge::Error::Generic(e.to_string()))?;
+            // Worker will clean up the file
+        } else {
+            // Delete file if exists
+            let full_path = ctx.storage.join(&dl.file_path);
+            let _ = tokio::fs::remove_file(&full_path).await;
+        }
+
+        sqlx::query("DELETE FROM downloads WHERE id = ?")
+            .bind(id)
+            .execute(&ctx.db)
+            .await
+            .map_err(|e| forge::Error::Generic(e.to_string()))?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Serialize, ToSchema)]
+struct ResolutionEstimate {
+    resolution: String,
+    size_bytes: Option<u64>,
+    size_display: Option<String>,
+    streams_count: usize,
+}
+
+#[utoipa::path(get, path = "/downloads/estimate/{media_type}/{tmdb_id}",
+    responses((status = 200, body = Vec<ResolutionEstimate>))
+)]
+async fn estimate_download(
+    State(ctx): State<AppContext>,
+    Path((media_type, tmdb_id)): Path<(String, i64)>,
+) -> Result<Json<Vec<ResolutionEstimate>>, AppError> {
+    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let tmdb = TmdbClient::new(&config, ctx.http.clone());
+    let mt = match media_type.as_str() {
+        "movie" => MediaType::Movie,
+        "tv" => MediaType::Tv,
+        _ => return Err(forge::Error::Generic("Invalid media type".into()).into()),
+    };
+    let item = tmdb.details(mt, tmdb_id).await?;
+    let imdb_id = item.imdb_id
+        .ok_or_else(|| forge::Error::Generic("No IMDB ID found".into()))?;
+
+    let path = if media_type == "tv" {
+        // Estimate from first episode of first season
+        format!("series/{}:1:1", imdb_id)
+    } else {
+        format!("movie/{}", imdb_id)
+    };
+
+    let all_streams = streams::aggregate(&ctx.http, &config.stream_sources, &path).await;
+
+    // Group by resolution, pick best stream per resolution for size estimate
+    let mut seen = std::collections::HashMap::<String, (Option<u64>, Option<String>, usize)>::new();
+    for s in &all_streams {
+        let Some(res) = s.resolution.clone() else { continue };
+        let entry = seen.entry(res).or_insert((None, None, 0));
+        entry.2 += 1;
+        // Use the first (best-scored) stream's size as estimate
+        if entry.0.is_none() {
+            entry.0 = s.size_bytes;
+            entry.1 = s.size_display.clone();
+        }
+    }
+
+    let order = |r: &str| -> u32 {
+        match r { "4K" | "2160p" => 4, "1080p" => 3, "720p" => 2, "480p" => 1, _ => 0 }
+    };
+
+    let mut estimates: Vec<ResolutionEstimate> = seen.into_iter().map(|(resolution, (size_bytes, size_display, streams_count))| {
+        ResolutionEstimate { resolution, size_bytes, size_display, streams_count }
+    }).collect();
+    estimates.sort_by(|a, b| order(&b.resolution).cmp(&order(&a.resolution)));
+
+    Ok(Json(estimates))
+}
+
+async fn serve_file(
+    State(ctx): State<AppContext>,
+    Path(path): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    if path.contains("..") {
+        return Err(forge::Error::Generic("Invalid path".into()).into());
+    }
+    let full_path = ctx.storage.join(&path);
+
+    let metadata = tokio::fs::metadata(&full_path).await
+        .map_err(|_| forge::Error::Generic("File not found".into()))?;
+
+    let file = tokio::fs::read(&full_path).await
+        .map_err(|_| forge::Error::Generic("Failed to read file".into()))?;
+
+    let content_type = if path.ends_with(".mp4") {
+        "video/mp4"
+    } else if path.ends_with(".mkv") {
+        "video/x-matroska"
+    } else {
+        "application/octet-stream"
+    };
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, content_type.to_string()),
+            (header::CONTENT_LENGTH, metadata.len().to_string()),
+            (header::ACCEPT_RANGES, "bytes".to_string()),
+            (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
+        ],
+        file,
+    ))
 }
 
 struct AppError(forge::Error);

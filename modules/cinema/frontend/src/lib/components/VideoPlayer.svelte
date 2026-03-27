@@ -3,7 +3,7 @@
 	import { fade } from "svelte/transition";
 	// @ts-ignore — hls.js types are resolved at build time
 	import Hls from "hls.js";
-	import { Button, Icon } from "glow";
+	import { Button, DropdownMenu, Icon, Popover, type DropdownMenuItem } from "glow";
 	import GradientOverlay from "./GradientOverlay.svelte";
 	import Spinner from "./Spinner.svelte";
 
@@ -83,10 +83,6 @@
 	let controlsVisible = $state(true);
 	let seeking = $state(false);
 	let isFullscreen = $state(false);
-	let subtitleMenuOpen = $state(false);
-	let audioMenuOpen = $state(false);
-	let resolutionMenuOpen = $state(false);
-	let streamMenuOpen = $state(false);
 
 	const activeResolution = $derived(
 		streams.find((s: StreamOption) => s.info_hash === activeStreamHash)
@@ -112,6 +108,45 @@
 		};
 		return result.sort((a, b) => (order[b] ?? 0) - (order[a] ?? 0));
 	});
+
+	const resolutionMenuItems = $derived<DropdownMenuItem[]>(
+		resolutions.map((res) => ({
+			label: res,
+			shortcut: res === activeResolution ? "●" : undefined,
+			onclick: () => {
+				const best = streams.find((s: StreamOption) => s.resolution === res);
+				if (best) onStreamSelect?.(best);
+			},
+		})),
+	);
+
+	const subtitleMenuItems = $derived<DropdownMenuItem[]>([
+		{
+			label: "Off",
+			shortcut: subtitles.length === 0 ? "●" : undefined,
+			onclick: () => onSubtitleOff?.(),
+		},
+		...subtitleTracks.map((track) => {
+			const dupes = subtitleTracks.filter((t) => t.language === track.language);
+			const suffix = dupes.length > 1 ? ` #${dupes.indexOf(track) + 1}` : "";
+			return {
+				label: `${track.language}${suffix}`,
+				shortcut: track.url === activeTrackUrl ? "●" : undefined,
+				onclick: () => onSubtitleSelect?.(track),
+			} as DropdownMenuItem;
+		}),
+	]);
+
+	const streamMenuItems = $derived<DropdownMenuItem[]>(
+		streams
+			.filter((s: StreamOption) => s.resolution === activeResolution)
+			.slice(0, 5)
+			.map((stream: StreamOption) => ({
+				label: `${stream.codec ?? stream.source}${stream.size_display ? ` · ${stream.size_display}` : ""}`,
+				shortcut: stream.info_hash === activeStreamHash ? "●" : undefined,
+				onclick: () => onStreamSelect?.(stream),
+			})),
+	);
 
 	interface AudioTrack {
 		id: number;
@@ -253,10 +288,6 @@
 		if (!paused) {
 			hideTimeout = setTimeout(() => {
 				controlsVisible = false;
-				subtitleMenuOpen = false;
-				audioMenuOpen = false;
-				streamMenuOpen = false;
-				resolutionMenuOpen = false;
 				cursorHidden = true;
 			}, 3000);
 		}
@@ -276,17 +307,7 @@
 				break;
 			case "Escape":
 				e.preventDefault();
-				if (
-					subtitleMenuOpen ||
-					audioMenuOpen ||
-					streamMenuOpen ||
-					resolutionMenuOpen
-				) {
-					subtitleMenuOpen = false;
-					audioMenuOpen = false;
-					streamMenuOpen = false;
-					resolutionMenuOpen = false;
-				} else if (onClose) {
+				if (onClose) {
 					onClose();
 				}
 				break;
@@ -623,240 +644,70 @@
 
 			<div class="controls-right">
 				{#if resolutions.length > 1 && onStreamSelect}
-					<div class="subtitle-menu-anchor">
-						<Button
-							variant="ghost"
-							icon="Settings"
-							onclick={() => {
-								resolutionMenuOpen = !resolutionMenuOpen;
-								streamMenuOpen = false;
-								subtitleMenuOpen = false;
-								audioMenuOpen = false;
-							}}
-						/>
-						{#if resolutionMenuOpen}
-							<div
-								class="subtitle-menu"
-								transition:fade={{ duration: 100 }}
-							>
-								<div class="sub-section">
-									<span class="sub-label">Quality</span>
-									<div class="sub-options">
-										{#each resolutions as res}
-											<button
-												class="sub-option"
-												class:selected={res ===
-													activeResolution}
-												onclick={() => {
-													const best = streams.find(
-														(s: StreamOption) =>
-															s.resolution ===
-															res,
-													);
-													if (best)
-														onStreamSelect?.(best);
-													resolutionMenuOpen = false;
-												}}
-											>
-												{res}
-											</button>
-										{/each}
-									</div>
-								</div>
-							</div>
-						{/if}
-					</div>
+					<DropdownMenu items={resolutionMenuItems} align="right">
+						{#snippet trigger()}
+							<Button variant="ghost" icon="Settings" />
+						{/snippet}
+					</DropdownMenu>
 				{/if}
 
 				{#if streams.length > 1 && onStreamSelect}
-					<div class="subtitle-menu-anchor">
-						<Button
-							variant="ghost"
-							icon="Radio"
-							onclick={() => {
-								streamMenuOpen = !streamMenuOpen;
-								resolutionMenuOpen = false;
-								subtitleMenuOpen = false;
-								audioMenuOpen = false;
-							}}
-						/>
-						{#if streamMenuOpen}
-							{@const filtered = streams
-								.filter(
-									(s: StreamOption) =>
-										s.resolution === activeResolution,
-								)
-								.slice(0, 5)}
-							<div
-								class="subtitle-menu"
-								transition:fade={{ duration: 100 }}
-							>
-								<div class="sub-section">
-									<span class="sub-label"
-										>{activeResolution} Sources</span
-									>
-									<div class="sub-options">
-										{#each filtered as stream}
-											<button
-												class="sub-option"
-												class:selected={stream.info_hash ===
-													activeStreamHash}
-												onclick={() => {
-													onStreamSelect?.(stream);
-													streamMenuOpen = false;
-												}}
-											>
-												<span
-													>{stream.codec ??
-														stream.source}{stream.size_display
-														? ` · ${stream.size_display}`
-														: ""}</span
-												>
-												{#if stream.seeders}<span
-														class="stream-meta"
-														>👤 {stream.seeders}</span
-													>{/if}
-											</button>
-										{/each}
-									</div>
-								</div>
-							</div>
-						{/if}
-					</div>
+					<DropdownMenu items={streamMenuItems} align="right">
+						{#snippet trigger()}
+							<Button variant="ghost" icon="Radio" />
+						{/snippet}
+					</DropdownMenu>
 				{/if}
 
 				{#if audioTracks.length > 1}
-					<div class="subtitle-menu-anchor">
-						<Button
-							variant="ghost"
-							icon="AudioLines"
-							onclick={() => {
-								audioMenuOpen = !audioMenuOpen;
-								subtitleMenuOpen = false;
-								streamMenuOpen = false;
-								resolutionMenuOpen = false;
-							}}
-						/>
-						{#if audioMenuOpen}
-							<div
-								class="subtitle-menu"
-								transition:fade={{ duration: 100 }}
-							>
-								<div class="sub-section">
-									<span class="sub-label">Audio</span>
-									<div class="sub-options">
-										{#each audioTracks as track}
-											<button
-												class="sub-option"
-												class:selected={track.id ===
-													activeAudioTrack}
-												onclick={() => {
-													if (hls)
-														hls.audioTrack =
-															track.id;
-													activeAudioTrack = track.id;
-													audioMenuOpen = false;
-												}}
-											>
-												{track.name}{track.lang
-													? ` (${track.lang})`
-													: ""}
-											</button>
-										{/each}
-									</div>
-								</div>
-							</div>
-						{/if}
-					</div>
+					<DropdownMenu
+						items={audioTracks.map((track) => ({
+							label: `${track.name}${track.lang ? ` (${track.lang})` : ""}`,
+							shortcut: track.id === activeAudioTrack ? "●" : undefined,
+							onclick: () => {
+								if (hls) hls.audioTrack = track.id;
+								activeAudioTrack = track.id;
+							},
+						}))}
+						align="right"
+					>
+						{#snippet trigger()}
+							<Button variant="ghost" icon="AudioLines" />
+						{/snippet}
+					</DropdownMenu>
 				{/if}
 				{#if subtitleTracks.length > 0}
-					<div class="subtitle-menu-anchor">
-						<Button
-							variant="ghost"
-							icon={subtitles.length > 0
-								? "Captions"
-								: "CaptionsOff"}
-							loading={loadingSubtitles}
-							onclick={() => {
-								subtitleMenuOpen = !subtitleMenuOpen;
-								audioMenuOpen = false;
-								streamMenuOpen = false;
-								resolutionMenuOpen = false;
-							}}
-						/>
-						{#if subtitleMenuOpen}
-							<div
-								class="subtitle-menu"
-								transition:fade={{ duration: 100 }}
-							>
-								<div class="sub-section">
-									<span class="sub-label">Language</span>
-									<div class="sub-options">
-										<button
-											class="sub-option"
-											class:selected={subtitles.length ===
-												0}
-											onclick={() => {
-												onSubtitleOff?.();
-											}}
-										>
-											Off
-										</button>
-										{#each subtitleTracks as track, i}
-											<button
-												class="sub-option"
-												class:selected={track.url ===
-													activeTrackUrl}
-												onclick={() => {
-													onSubtitleSelect?.(track);
-												}}
-											>
-												{track.language}{subtitleTracks.filter(
-													(t) =>
-														t.language ===
-														track.language,
-												).length > 1
-													? ` #${subtitleTracks.filter((t) => t.language === track.language).indexOf(track) + 1}`
-													: ""}
-											</button>
-										{/each}
-									</div>
-								</div>
+					<Popover align="right">
+						{#snippet trigger()}
+							<Button
+								variant="ghost"
+								icon="ClosedCaption"
+								loading={loadingSubtitles}
+							/>
+						{/snippet}
+						{#snippet children()}
+							<div class="sub-menu">
+								{#each subtitleMenuItems as item}
+									<button class="sub-item" onclick={item.onclick}>
+										<span>{item.label}</span>
+										{#if item.shortcut}
+											<span class="sub-dot">{item.shortcut}</span>
+										{/if}
+									</button>
+								{/each}
 								{#if subtitles.length > 0}
 									<div class="sub-divider"></div>
-									<div class="sub-section">
-										<span class="sub-label">Offset</span>
-										<div class="sub-offset">
-											<Button
-												variant="ghost"
-												icon="Minus"
-												onclick={() => {
-													subtitleOffset -= 0.25;
-												}}
-											/>
-											<span class="sub-offset-value"
-												>{subtitleOffset -
-													defaultOffset >
-												0
-													? "+"
-													: ""}{(
-													subtitleOffset -
-													defaultOffset
-												).toFixed(1)}s</span
-											>
-											<Button
-												variant="ghost"
-												icon="Plus"
-												onclick={() => {
-													subtitleOffset += 0.25;
-												}}
-											/>
-										</div>
+									<div class="sub-offset">
+										<Button variant="ghost" icon="Minus" onclick={() => { subtitleOffset -= 0.25; }} />
+										<span class="sub-offset-value">
+											{subtitleOffset - defaultOffset > 0 ? "+" : ""}{(subtitleOffset - defaultOffset).toFixed(1)}s
+										</span>
+										<Button variant="ghost" icon="Plus" onclick={() => { subtitleOffset += 0.25; }} />
 									</div>
 								{/if}
 							</div>
-						{/if}
-					</div>
+						{/snippet}
+					</Popover>
 				{/if}
 				<Button
 					variant="ghost"
@@ -1293,51 +1144,17 @@
 		white-space: nowrap;
 	}
 
-	/* ── Subtitle menu ── */
-	.subtitle-menu-anchor {
-		position: relative;
-	}
-
-	.subtitle-menu {
-		position: absolute;
-		bottom: 100%;
-		right: 0;
-		margin-bottom: 8px;
-		background: rgba(20, 20, 28, 0.95);
-		backdrop-filter: blur(12px);
-		border: 1px solid rgba(255, 255, 255, 0.1);
-		border-radius: 10px;
-		padding: 8px;
-		min-width: 160px;
+	/* ── Subtitle popover ── */
+	.sub-menu {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		min-width: 140px;
 	}
 
-	.sub-section {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.sub-label {
-		font-size: 0.65rem;
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		color: rgba(255, 255, 255, 0.35);
-		padding: 0 6px;
-	}
-
-	.sub-options {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.sub-option {
+	.sub-item {
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		width: 100%;
 		padding: 5px 10px;
 		background: none;
 		border: none;
@@ -1346,29 +1163,22 @@
 		text-align: left;
 		cursor: pointer;
 		border-radius: 6px;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
 	}
 
-	.sub-option:hover {
+	.sub-item:hover {
 		background: rgba(255, 255, 255, 0.08);
 		color: #fff;
 	}
 
-	.sub-option.selected {
-		color: #fff;
-		font-weight: 600;
-	}
-
-	.stream-meta {
-		font-size: 0.65rem;
-		color: rgba(255, 255, 255, 0.3);
+	.sub-dot {
+		font-size: 0.6rem;
+		color: rgba(255, 255, 255, 0.5);
 	}
 
 	.sub-divider {
 		height: 1px;
 		background: rgba(255, 255, 255, 0.08);
-		margin: 2px 0;
+		margin: 4px 0;
 	}
 
 	.sub-offset {

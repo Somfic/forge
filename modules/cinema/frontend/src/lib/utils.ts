@@ -11,5 +11,5 @@ export async function getDetails(type: MediaType, id: number) {
 
 export async function playStream(infoHash: string, fileIdx: number) {
 	const res = await startStream(infoHash, fileIdx);
-	return res.data.url;
+	return { url: res.data.url, local: res.data.local };
 }

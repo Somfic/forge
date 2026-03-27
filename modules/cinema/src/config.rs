@@ -9,6 +9,12 @@ pub struct CinemaConfig {
     pub stream_sources: Vec<String>,
     #[serde(default = "default_subtitle_languages")]
     pub subtitle_languages: Vec<String>,
+    #[serde(default = "default_max_concurrent_downloads")]
+    pub max_concurrent_downloads: usize,
+}
+
+fn default_max_concurrent_downloads() -> usize {
+    2
 }
 
 fn default_subtitle_languages() -> Vec<String> {

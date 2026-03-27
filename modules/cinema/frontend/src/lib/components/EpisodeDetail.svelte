@@ -3,11 +3,13 @@
 	import { imageUrl } from "$lib/utils";
 	import { Button, MediaCard, Text } from "glow";
 	import PlayCard from "./PlayCard.svelte";
+	import DownloadButton from "./DownloadButton.svelte";
 
 	let {
 		season,
 		episode,
 		showTitle,
+		tmdbId,
 		resumeEntry,
 		loadingStreams = false,
 		onback,
@@ -17,6 +19,7 @@
 		season: Season;
 		episode: Episode;
 		showTitle: string;
+		tmdbId: number;
 		resumeEntry?: WatchHistoryItem | null;
 		loadingStreams?: boolean;
 		onback: () => void;
@@ -79,6 +82,14 @@
 			onclick={onplay}
 		/>
 	{/if}
+
+	<DownloadButton
+		mediaType="tv"
+		{tmdbId}
+		title={showTitle}
+		season={season.season_number}
+		episode={episode.episode_number}
+	/>
 </div>
 
 <style>
@@ -123,5 +134,34 @@
 		display: flex;
 		gap: 0.75rem;
 		align-items: center;
+	}
+
+	@media (max-width: 768px) {
+		.episode-strip {
+			width: 100%;
+			height: auto;
+			max-height: 30vh;
+			flex-direction: row;
+			padding: 0.5rem;
+			padding-top: 0.5rem;
+			overflow-x: auto;
+			overflow-y: hidden;
+		}
+
+		.episode-strip :global(> *) {
+			width: 100px;
+			flex-shrink: 0;
+		}
+
+		.sidebar {
+			width: 100%;
+			height: auto;
+			padding: 1rem;
+			padding-top: 1rem;
+		}
+
+		.ep-title {
+			font-size: 1.2rem;
+		}
 	}
 </style>

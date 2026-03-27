@@ -12,4 +12,6 @@ urlencoding = "2.1.3"
 utoipa = { workspace = true }
 utoipa-axum = { workspace = true }
 futures = "0.3"
+tokio = { workspace = true }
+reqwest = { workspace = true }
 tracing = { workspace = true }

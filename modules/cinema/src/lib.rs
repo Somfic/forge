@@ -3,6 +3,7 @@ use sqlx::migrate::Migrator;
 use utoipa_axum::router::OpenApiRouter;
 
 mod config;
+pub(crate) mod downloads;
 mod routes;
 mod streams;
 mod subtitles;
@@ -50,7 +51,8 @@ impl Module for CinemaModule {
 
     async fn on_start(&self, ctx: AppContext) -> forge::Result<()> {
         let config = ctx.config.module_config::<config::CinemaConfig>("cinema")?;
-
+        let manager = downloads::DownloadManager::new(ctx.clone(), config);
+        tokio::spawn(manager.run());
         Ok(())
     }
 

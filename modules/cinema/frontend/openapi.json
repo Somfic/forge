@@ -143,6 +143,104 @@
         }
       }
     },
+    "/downloads": {
+      "get": {
+        "operationId": "list_downloads",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Download"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "enqueue_download",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnqueueDownloadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/downloads/estimate/{media_type}/{tmdb_id}": {
+      "get": {
+        "operationId": "estimate_download",
+        "parameters": [
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tmdb_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResolutionEstimate"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/downloads/{id}": {
+      "delete": {
+        "operationId": "delete_download",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/movie/{id}": {
       "get": {
         "operationId": "movie_details",
@@ -633,6 +731,149 @@
           }
         }
       },
+      "Download": {
+        "type": "object",
+        "required": [
+          "id",
+          "media_type",
+          "tmdb_id",
+          "title",
+          "season",
+          "episode",
+          "info_hash",
+          "file_idx",
+          "file_path",
+          "downloaded_bytes",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "downloaded_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "episode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file_idx": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "info_hash": {
+            "type": "string"
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolution": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "season": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tmdb_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "total_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "EnqueueDownloadRequest": {
+        "type": "object",
+        "required": [
+          "media_type",
+          "tmdb_id",
+          "title",
+          "resolution"
+        ],
+        "properties": {
+          "episode": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "file_idx": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "info_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media_type": {
+            "type": "string"
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolution": {
+            "type": "string"
+          },
+          "season": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "title": {
+            "type": "string"
+          },
+          "tmdb_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "Episode": {
         "type": "object",
         "required": [
@@ -851,6 +1092,36 @@
           }
         }
       },
+      "ResolutionEstimate": {
+        "type": "object",
+        "required": [
+          "resolution",
+          "streams_count"
+        ],
+        "properties": {
+          "resolution": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "size_display": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "streams_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "SearchResult": {
         "type": "object",
         "required": [
@@ -943,9 +1214,13 @@
       "StartStreamResponse": {
         "type": "object",
         "required": [
-          "url"
+          "url",
+          "local"
         ],
         "properties": {
+          "local": {
+            "type": "boolean"
+          },
           "url": {
             "type": "string"
           }

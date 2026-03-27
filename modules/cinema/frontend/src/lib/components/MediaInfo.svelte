@@ -13,6 +13,7 @@
 	import { imageUrl } from "$lib/utils";
 	import { Button, Icon, MediaCard, Pill, Text } from "glow";
 	import PlayCard from "./PlayCard.svelte";
+	import DownloadButton from "./DownloadButton.svelte";
 
 	let {
 		item,
@@ -186,8 +187,7 @@
 			{/if}
 			{#if item.runtime}
 				<Text as="span" variant="secondary" size="sm"
-					>{Math.floor(item.runtime / 60)}h {item.runtime %
-						60}min</Text
+					>{Math.floor(item.runtime / 60) > 0 ? `${Math.floor(item.runtime / 60)}h ` : ""}{item.runtime % 60}min</Text
 				>
 			{/if}
 			{#if item.seasons}
@@ -231,7 +231,7 @@
 					(v) => (onWatchlist = v),
 				)}
 		/>
-		{#if onselectseason}
+		{#if onselectseason && item.seasons?.length}
 			<Button
 				variant="ghost"
 				icon="LayoutGrid"
@@ -239,6 +239,12 @@
 				onclick={() => onselectseason(item.seasons![0].season_number)}
 			/>
 		{/if}
+		<DownloadButton
+			mediaType={item.media_type}
+			tmdbId={item.id}
+			title={item.title}
+			posterPath={item.poster_path ?? undefined}
+		/>
 	</div>
 
 	{#if item.media_type === "movie" && (movieResume ? onresume : onwatch)}
@@ -295,6 +301,7 @@
 	.sidebar {
 		width: 40vw;
 		min-height: 100vh;
+		min-height: 100dvh;
 		padding: 2rem;
 		display: flex;
 		flex-direction: column;
@@ -307,6 +314,7 @@
 		flex-direction: column;
 		justify-content: center;
 		gap: 0.75rem;
+		min-height: 0;
 	}
 
 	.logo {
@@ -347,7 +355,29 @@
 	@media (max-width: 768px) {
 		.sidebar {
 			width: 100%;
-			padding-top: 30vh;
+			padding: 1rem;
+			padding-top: 40vh;
+			min-height: auto;
+		}
+
+		.title-area {
+			flex: 0;
+		}
+
+		.logo {
+			max-width: 60%;
+		}
+
+		.title {
+			font-size: 1.5rem;
+		}
+
+		.actions-row {
+			flex-wrap: wrap;
+		}
+
+		.meta {
+			gap: 0.5rem;
 		}
 	}
 </style>

@@ -50,6 +50,7 @@
 	let playerPaused = $state(true);
 	let playerStartTime = $state(0);
 	let loadingSubtitles = $state(false);
+	let playingLocal = $state(false);
 
 	// ── Derived ──
 	const slideIndex = $derived(
@@ -57,7 +58,9 @@
 	);
 
 	const backdropUrls = $derived(
-		item?.backdrops?.filter((_, i) => i !== 1).map((b) => imageUrl(b, "original")) ?? [],
+		item?.backdrops
+			?.filter((_, i) => i !== 1)
+			.map((b) => imageUrl(b, "original")) ?? [],
 	);
 
 	const activeSeason = $derived(
@@ -65,25 +68,39 @@
 	);
 
 	const activeEpisode = $derived(
-		activeSeason?.episodes?.find((e) => e.episode_number === selectedEpisode) ?? null,
+		activeSeason?.episodes?.find(
+			(e) => e.episode_number === selectedEpisode,
+		) ?? null,
 	);
 
 	const playerTitle = $derived(
-		item?.media_type === "tv" && activeEpisode ? activeEpisode.name : item?.title,
+		item?.media_type === "tv" && activeEpisode
+			? activeEpisode.name
+			: item?.title,
 	);
 
 	const playerTopline = $derived(
-		item?.media_type === "tv" && selectedSeason !== null && selectedEpisode !== null
+		item?.media_type === "tv" &&
+			selectedSeason !== null &&
+			selectedEpisode !== null
 			? `S${selectedSeason} E${selectedEpisode} · ${item?.title}`
 			: item?.tagline || undefined,
 	);
 
 	const episodeOverride = $derived(
-		activeEpisode?.still_path ? imageUrl(activeEpisode.still_path, "original") : undefined,
+		activeEpisode?.still_path
+			? imageUrl(activeEpisode.still_path, "original")
+			: undefined,
 	);
 
 	const backdropPosition = $derived(
-		selectedStream ? "0%" : slideIndex === 2 ? "10%" : slideIndex === 1 ? "0%" : "-10%",
+		selectedStream
+			? "0%"
+			: slideIndex === 2
+				? "13%"
+				: slideIndex === 1
+					? "0%"
+					: "-13%",
 	);
 
 	// ── Gradient color transition via @property ──
@@ -120,8 +137,12 @@
 		const id = Number(page.params.id);
 		item = null;
 		streams = [];
-		selectedSeason = page.url.searchParams.has("s") ? Number(page.url.searchParams.get("s")) : null;
-		selectedEpisode = page.url.searchParams.has("e") ? Number(page.url.searchParams.get("e")) : null;
+		selectedSeason = page.url.searchParams.has("s")
+			? Number(page.url.searchParams.get("s"))
+			: null;
+		selectedEpisode = page.url.searchParams.has("e")
+			? Number(page.url.searchParams.get("e"))
+			: null;
 		error = null;
 		similarItems = [];
 		getDetails(type, id)
@@ -132,13 +153,20 @@
 				}
 				// Fetch similar + watch history in background
 				fetchSimilar(type, id)
-					.then((r) => { similarItems = r.data; })
+					.then((r) => {
+						similarItems = r.data;
+					})
 					.catch(() => {});
 				fetchWatchHistory()
 					.then((r) => {
-						resumeEntry = r.data.find(
-							(w) => w.media_type === type && w.tmdb_id === id && w.info_hash && w.progress > 0
-						) ?? null;
+						resumeEntry =
+							r.data.find(
+								(w) =>
+									w.media_type === type &&
+									w.tmdb_id === id &&
+									w.info_hash &&
+									w.progress > 0,
+							) ?? null;
 					})
 					.catch(() => {});
 			})
@@ -174,9 +202,11 @@
 
 	function updateParams() {
 		const u = new URL(window.location.href);
-		if (selectedSeason !== null) u.searchParams.set("s", String(selectedSeason));
+		if (selectedSeason !== null)
+			u.searchParams.set("s", String(selectedSeason));
 		else u.searchParams.delete("s");
-		if (selectedEpisode !== null) u.searchParams.set("e", String(selectedEpisode));
+		if (selectedEpisode !== null)
+			u.searchParams.set("e", String(selectedEpisode));
 		else u.searchParams.delete("e");
 		replaceState(u, {});
 	}
@@ -188,8 +218,11 @@
 		try {
 			streams = (await movieStreams(item.id)).data;
 			if (streams.length > 0) play(streams[0]);
-		} catch (e: any) { error = e.message; }
-		finally { loadingStreams = false; }
+		} catch (e: any) {
+			error = e.message;
+		} finally {
+			loadingStreams = false;
+		}
 	}
 
 	async function loadAndPlayEpisodeStreams(season: number, episode: number) {
@@ -198,8 +231,11 @@
 		try {
 			streams = (await tvStreams(item.id, season, episode)).data;
 			if (streams.length > 0) play(streams[0]);
-		} catch (e: any) { error = e.message; }
-		finally { loadingStreams = false; }
+		} catch (e: any) {
+			error = e.message;
+		} finally {
+			loadingStreams = false;
+		}
 	}
 
 	async function switchStream(stream: Stream) {
@@ -209,7 +245,11 @@
 
 	function playEpisode() {
 		if (!item || selectedSeason == null || selectedEpisode == null) return;
-		if (resumeEntry?.info_hash && resumeEntry.season === selectedSeason && resumeEntry.episode === selectedEpisode) {
+		if (
+			resumeEntry?.info_hash &&
+			resumeEntry.season === selectedSeason &&
+			resumeEntry.episode === selectedEpisode
+		) {
 			resume();
 		} else {
 			loadAndPlayEpisodeStreams(selectedSeason, selectedEpisode);
@@ -223,17 +263,22 @@
 			selectedEpisode = resumeEntry.episode;
 		}
 		playerStartTime = resumeEntry.progress ?? 0;
-		play({
-			info_hash: resumeEntry.info_hash,
-			file_idx: resumeEntry.file_idx,
-		} as Stream, true);
+		play(
+			{
+				info_hash: resumeEntry.info_hash,
+				file_idx: resumeEntry.file_idx,
+			} as Stream,
+			true,
+		);
 
 		// Fetch streams in background so the stream switcher works
 		try {
 			if (item.media_type === "movie") {
 				streams = (await movieStreams(item.id)).data;
 			} else if (selectedSeason != null && selectedEpisode != null) {
-				streams = (await tvStreams(item.id, selectedSeason, selectedEpisode)).data;
+				streams = (
+					await tvStreams(item.id, selectedSeason, selectedEpisode)
+				).data;
 			}
 		} catch {}
 	}
@@ -251,8 +296,13 @@
 		replaceState(u, {});
 
 		playStream(stream.info_hash, stream.file_idx)
-			.then((url) => { streamUrl = url; })
-			.catch((e) => { error = e.message; });
+			.then((result) => {
+				streamUrl = result.url;
+				playingLocal = result.local;
+			})
+			.catch((e) => {
+				error = e.message;
+			});
 
 		loadSubtitles();
 	}
@@ -264,21 +314,34 @@
 			if (item.media_type === "movie") {
 				subtitleTracks = (await movieSubtitles(item.id)).data;
 			} else if (selectedSeason !== null && selectedEpisode !== null) {
-				subtitleTracks = (await tvSubtitles(item.id, selectedSeason, selectedEpisode)).data;
+				subtitleTracks = (
+					await tvSubtitles(item.id, selectedSeason, selectedEpisode)
+				).data;
 			}
-			if (subtitleTracks.length > 0) await selectSubtitleTrack(subtitleTracks[0]);
-		} catch {} finally { loadingSubtitles = false; }
+			if (subtitleTracks.length > 0)
+				await selectSubtitleTrack(subtitleTracks[0]);
+		} catch {
+		} finally {
+			loadingSubtitles = false;
+		}
 	}
 
 	async function selectSubtitleTrack(track: SubtitleTrack) {
 		loadingSubtitles = true;
 		activeTrackUrl = track.url;
-		try { activeCues = (await subtitleCues({ url: track.url })).data; }
-		catch { activeCues = []; }
-		finally { loadingSubtitles = false; }
+		try {
+			activeCues = (await subtitleCues({ url: track.url })).data;
+		} catch {
+			activeCues = [];
+		} finally {
+			loadingSubtitles = false;
+		}
 	}
 
-	function disableSubtitles() { activeCues = []; activeTrackUrl = undefined; }
+	function disableSubtitles() {
+		activeCues = [];
+		activeTrackUrl = undefined;
+	}
 
 	function stopPlaying() {
 		saveProgress();
@@ -297,9 +360,14 @@
 			.then((r) => {
 				const type = page.params.type;
 				const id = Number(page.params.id);
-				resumeEntry = r.data.find(
-					(w) => w.media_type === type && w.tmdb_id === id && w.info_hash && w.progress > 0
-				) ?? null;
+				resumeEntry =
+					r.data.find(
+						(w) =>
+							w.media_type === type &&
+							w.tmdb_id === id &&
+							w.info_hash &&
+							w.progress > 0,
+					) ?? null;
 			})
 			.catch(() => {});
 	}
@@ -308,7 +376,8 @@
 	function saveProgress() {
 		if (!item || !selectedStream || playerTime <= 0) return;
 		// For TV, don't save without season/episode
-		if (item.media_type === "tv" && (!selectedSeason || !selectedEpisode)) return;
+		if (item.media_type === "tv" && (!selectedSeason || !selectedEpisode))
+			return;
 		recordWatch({
 			media_type: item.media_type,
 			tmdb_id: item.id,
@@ -351,24 +420,44 @@
 		<CyclingBackdrop
 			images={backdropUrls}
 			overlay={slideIndex === 1 || selectedStream !== null}
-			override={selectedStream ? backdropUrls[0] : slideIndex === 2 ? episodeOverride : undefined}
+			override={selectedStream
+				? backdropUrls[0]
+				: slideIndex === 2
+					? episodeOverride
+					: undefined}
 			position={backdropPosition}
 			bind:dominantColor={backdropColor}
 			bind:accentColor
 		/>
 	</div>
-	<div class="gradient-right" class:hidden={slideIndex > 0 || selectedStream !== null} bind:this={gradientRightEl}></div>
-	<div class="gradient-left" class:hidden={slideIndex !== 2 || selectedStream !== null} bind:this={gradientLeftEl}></div>
+	<div
+		class="gradient-right"
+		class:hidden={slideIndex > 0 || selectedStream !== null}
+		bind:this={gradientRightEl}
+	></div>
+	<div
+		class="gradient-left"
+		class:hidden={slideIndex !== 2 || selectedStream !== null}
+		bind:this={gradientLeftEl}
+	></div>
 
 	<!-- Back button -->
 	{#if slideIndex === 0 && !selectedStream}
 		<div class="back-button">
-			<Button variant="ghost" icon="ArrowLeft" onclick={() => window.history.back()} />
+			<Button
+				variant="ghost"
+				icon="ArrowLeft"
+				onclick={() => window.history.back()}
+			/>
 		</div>
 	{/if}
 
 	<!-- Slider -->
-	<div class="slider" class:faded={selectedStream !== null} style="transform: translateX({-slideIndex * 100}vw)">
+	<div
+		class="slider"
+		class:faded={selectedStream !== null}
+		style="transform: translateX({-slideIndex * 100}vw)"
+	>
 		<!-- Page 0: Info -->
 		<div class="page page-info">
 			<MediaInfo
@@ -389,7 +478,10 @@
 				<SeasonBrowser
 					seasons={item.seasons}
 					onback={goBack}
-					onscrollseason={(n) => { selectedSeason = n; updateParams(); }}
+					onscrollseason={(n) => {
+						selectedSeason = n;
+						updateParams();
+					}}
 					onselectepisode={selectEpisode}
 				/>
 			{/if}
@@ -402,6 +494,7 @@
 					season={activeSeason}
 					episode={activeEpisode}
 					showTitle={item.title}
+					tmdbId={item.id}
 					{resumeEntry}
 					{loadingStreams}
 					onback={goBack}
@@ -420,16 +513,20 @@
 				subtitles={activeCues}
 				title={playerTitle}
 				topline={playerTopline}
-				titleImage={item?.logo_path ? imageUrl(item.logo_path, "original") : undefined}
+				titleImage={item?.logo_path
+					? imageUrl(item.logo_path, "original")
+					: undefined}
 				{subtitleTracks}
 				{loadingSubtitles}
 				{activeTrackUrl}
 				accent={accentColor}
-				backdrop={item?.backdrops?.[0] ? imageUrl(item.backdrops[0], "original") : undefined}
+				backdrop={item?.backdrops?.[0]
+					? imageUrl(item.backdrops[0], "original")
+					: undefined}
 				startTime={playerStartTime}
-				{streams}
+				streams={playingLocal ? [] : streams}
 				activeStreamHash={selectedStream?.info_hash}
-				onStreamSelect={switchStream}
+				onStreamSelect={playingLocal ? undefined : switchStream}
 				bind:currentTime={playerTime}
 				bind:duration={playerDuration}
 				bind:paused={playerPaused}
@@ -465,11 +562,24 @@
 		z-index: 0;
 	}
 
-	@property --tint-r { syntax: "<number>"; inherits: false; initial-value: 9; }
-	@property --tint-g { syntax: "<number>"; inherits: false; initial-value: 10; }
-	@property --tint-b { syntax: "<number>"; inherits: false; initial-value: 19; }
+	@property --tint-r {
+		syntax: "<number>";
+		inherits: false;
+		initial-value: 9;
+	}
+	@property --tint-g {
+		syntax: "<number>";
+		inherits: false;
+		initial-value: 10;
+	}
+	@property --tint-b {
+		syntax: "<number>";
+		inherits: false;
+		initial-value: 19;
+	}
 
-	.gradient-right, .gradient-left {
+	.gradient-right,
+	.gradient-left {
 		position: fixed;
 		inset: 0;
 		z-index: 0;
@@ -477,17 +587,21 @@
 		--tint-r: 9;
 		--tint-g: 10;
 		--tint-b: 19;
-		transition: --tint-r 1.5s ease, --tint-g 1.5s ease, --tint-b 1.5s ease, opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+		transition:
+			--tint-r 1.5s ease,
+			--tint-g 1.5s ease,
+			--tint-b 1.5s ease,
+			opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.gradient-right {
 		background: linear-gradient(
 			to right,
 			transparent 0%,
-			transparent 40%,
-			rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.6) 55%,
-			rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.9) 70%,
-			rgb(var(--tint-r), var(--tint-g), var(--tint-b)) 80%
+			transparent 35%,
+			rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.6) 52%,
+			rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.95) 67%,
+			rgb(var(--tint-r), var(--tint-g), var(--tint-b)) 78%
 		);
 	}
 
@@ -495,14 +609,15 @@
 		background: linear-gradient(
 			to left,
 			transparent 0%,
-			transparent 40%,
-			rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.6) 55%,
-			rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.9) 70%,
-			rgb(var(--tint-r), var(--tint-g), var(--tint-b)) 80%
+			transparent 35%,
+			rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.6) 52%,
+			rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.95) 67%,
+			rgb(var(--tint-r), var(--tint-g), var(--tint-b)) 78%
 		);
 	}
 
-	.gradient-right.hidden, .gradient-left.hidden {
+	.gradient-right.hidden,
+	.gradient-left.hidden {
 		opacity: 0;
 	}
 
@@ -514,7 +629,9 @@
 		width: 300vw;
 		height: 100vh;
 		overflow: hidden;
-		transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.5s ease;
+		transition:
+			transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+			opacity 0.5s ease;
 	}
 
 	.slider.faded {
@@ -559,5 +676,29 @@
 	.player-overlay.active {
 		opacity: 1;
 		pointer-events: auto;
+	}
+
+	@media (max-width: 768px) {
+		.gradient-right {
+			background: linear-gradient(
+				to bottom,
+				transparent 0%,
+				transparent 30%,
+				rgba(var(--tint-r), var(--tint-g), var(--tint-b), 0.7) 50%,
+				rgb(var(--tint-r), var(--tint-g), var(--tint-b)) 70%
+			);
+		}
+
+		.page-info {
+			justify-content: flex-start;
+		}
+
+		.page-episodes {
+			flex-direction: column;
+		}
+
+		.page-episode-detail {
+			flex-direction: column;
+		}
 	}
 </style>

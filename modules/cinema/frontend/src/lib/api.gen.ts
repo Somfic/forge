@@ -28,6 +28,46 @@ export interface CollectionStatus {
   in_collection: boolean;
 }
 
+export interface Download {
+  /** @nullable */
+  completed_at?: string | null;
+  created_at: string;
+  downloaded_bytes: number;
+  episode: number;
+  /** @nullable */
+  error?: string | null;
+  file_idx: number;
+  file_path: string;
+  id: number;
+  info_hash: string;
+  media_type: string;
+  /** @nullable */
+  poster_path?: string | null;
+  /** @nullable */
+  resolution?: string | null;
+  season: number;
+  status: string;
+  title: string;
+  tmdb_id: number;
+  /** @nullable */
+  total_bytes?: number | null;
+}
+
+export interface EnqueueDownloadRequest {
+  episode?: number;
+  /** @nullable */
+  file_idx?: number | null;
+  /** @nullable */
+  info_hash?: string | null;
+  media_type: string;
+  /** @nullable */
+  poster_path?: string | null;
+  resolution: string;
+  season?: number;
+  title: string;
+  tmdb_id: number;
+}
+
 export interface Episode {
   episode_number: number;
   name: string;
@@ -116,6 +156,19 @@ export interface RecordWatchRequest {
   tmdb_id: number;
 }
 
+export interface ResolutionEstimate {
+  resolution: string;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  size_bytes?: number | null;
+  /** @nullable */
+  size_display?: string | null;
+  /** @minimum 0 */
+  streams_count: number;
+}
+
 export interface SearchResult {
   /** @nullable */
   backdrop_path?: string | null;
@@ -131,6 +184,7 @@ export interface SearchResult {
 }
 
 export interface StartStreamResponse {
+  local: boolean;
   url: string;
 }
 
@@ -369,6 +423,165 @@ export const removeFromCollection = async (collection: string,
 
   const data: removeFromCollectionResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as removeFromCollectionResponse
+}
+
+
+
+export type listDownloadsResponse200 = {
+  data: Download[]
+  status: 200
+}
+
+export type listDownloadsResponseSuccess = (listDownloadsResponse200) & {
+  headers: Headers;
+};
+;
+
+export type listDownloadsResponse = (listDownloadsResponseSuccess)
+
+export const getListDownloadsUrl = () => {
+
+
+
+
+  return `/cinema/api/downloads`
+}
+
+export const listDownloads = async ( options?: RequestInit): Promise<listDownloadsResponse> => {
+
+  const res = await fetch(getListDownloadsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: listDownloadsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as listDownloadsResponse
+}
+
+
+
+export type enqueueDownloadResponse204 = {
+  data: void
+  status: 204
+}
+
+export type enqueueDownloadResponseSuccess = (enqueueDownloadResponse204) & {
+  headers: Headers;
+};
+;
+
+export type enqueueDownloadResponse = (enqueueDownloadResponseSuccess)
+
+export const getEnqueueDownloadUrl = () => {
+
+
+
+
+  return `/cinema/api/downloads`
+}
+
+export const enqueueDownload = async (enqueueDownloadRequest: EnqueueDownloadRequest, options?: RequestInit): Promise<enqueueDownloadResponse> => {
+
+  const res = await fetch(getEnqueueDownloadUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      enqueueDownloadRequest,)
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: enqueueDownloadResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as enqueueDownloadResponse
+}
+
+
+
+export type estimateDownloadResponse200 = {
+  data: ResolutionEstimate[]
+  status: 200
+}
+
+export type estimateDownloadResponseSuccess = (estimateDownloadResponse200) & {
+  headers: Headers;
+};
+;
+
+export type estimateDownloadResponse = (estimateDownloadResponseSuccess)
+
+export const getEstimateDownloadUrl = (mediaType: string,
+    tmdbId: number,) => {
+
+
+
+
+  return `/cinema/api/downloads/estimate/${mediaType}/${tmdbId}`
+}
+
+export const estimateDownload = async (mediaType: string,
+    tmdbId: number, options?: RequestInit): Promise<estimateDownloadResponse> => {
+
+  const res = await fetch(getEstimateDownloadUrl(mediaType,tmdbId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: estimateDownloadResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as estimateDownloadResponse
+}
+
+
+
+export type deleteDownloadResponse204 = {
+  data: void
+  status: 204
+}
+
+export type deleteDownloadResponseSuccess = (deleteDownloadResponse204) & {
+  headers: Headers;
+};
+;
+
+export type deleteDownloadResponse = (deleteDownloadResponseSuccess)
+
+export const getDeleteDownloadUrl = (id: number,) => {
+
+
+
+
+  return `/cinema/api/downloads/${id}`
+}
+
+export const deleteDownload = async (id: number, options?: RequestInit): Promise<deleteDownloadResponse> => {
+
+  const res = await fetch(getDeleteDownloadUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+)
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: deleteDownloadResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as deleteDownloadResponse
 }
 
 

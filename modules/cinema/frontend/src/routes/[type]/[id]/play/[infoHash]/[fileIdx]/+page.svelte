@@ -53,7 +53,7 @@
 			.catch((e) => { error = e.message; });
 
 		const streamPromise = playStream(infoHash as string, fileIdx as number)
-			.then((url) => { streamUrl = url; })
+			.then((result) => { streamUrl = result.url; })
 			.catch((e) => { error = e.message; });
 
 		Promise.all([detailsPromise, streamPromise]).then(() => {

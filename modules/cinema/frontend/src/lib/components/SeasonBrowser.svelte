@@ -119,4 +119,29 @@
 		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 		gap: 0.75rem;
 	}
+
+	@media (max-width: 768px) {
+		.season-strip {
+			width: 100%;
+			height: auto;
+			flex-direction: row;
+			padding: 0.5rem;
+			padding-top: 0.5rem;
+			overflow-x: auto;
+			overflow-y: hidden;
+		}
+
+		.season-strip :global(> *) {
+			width: 60px;
+			flex-shrink: 0;
+		}
+
+		.episode-area {
+			padding: 1rem;
+		}
+
+		.episode-grid {
+			grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		}
+	}
 </style>

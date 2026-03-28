@@ -2,6 +2,7 @@
 	import { page } from "$app/state";
 	import { replaceState } from "$app/navigation";
 	import { onDestroy } from "svelte";
+	import { fade } from "svelte/transition";
 	import {
 		movieStreams,
 		tvStreams,
@@ -21,7 +22,7 @@
 		type WatchHistoryItem,
 	} from "$lib/api.gen";
 	import { getDetails, imageUrl, playStream } from "$lib/utils";
-	import { Banner, Button, Text } from "glow";
+	import { Banner, Button, Spinner, Text } from "glow";
 	import CyclingBackdrop from "$lib/components/CyclingBackdrop.svelte";
 	import VideoPlayer from "$lib/components/VideoPlayer.svelte";
 	import MediaInfo from "$lib/components/MediaInfo.svelte";
@@ -115,10 +116,12 @@
 			: item?.tagline || undefined,
 	);
 
-	const episodeOverride = $derived(
-		activeEpisode?.still_path
-			? imageUrl(activeEpisode.still_path, "original")
-			: undefined,
+	const episodeBackdrops = $derived(
+		activeEpisode?.stills?.length
+			? activeEpisode.stills
+					.filter((_, i) => i !== 1)
+					.map((s) => imageUrl(s, "original"))
+			: [],
 	);
 
 	const backdropPosition = $derived(
@@ -559,18 +562,20 @@
 	</div>
 {/if}
 {#if !item}
-	<Text variant="muted">Loading...</Text>
+	<div class="loading-screen" out:fade={{ duration: 300 }}>
+		<Spinner size={32} />
+	</div>
 {:else}
 	<!-- Backdrop -->
 	<div class="backdrop-container">
 		<CyclingBackdrop
-			images={backdropUrls}
+			images={slideIndex === 2 && episodeBackdrops.length > 0
+				? episodeBackdrops
+				: backdropUrls}
 			overlay={slideIndex === 1 || selectedStream !== null}
 			override={selectedStream
 				? backdropUrls[0]
-				: slideIndex === 2
-					? episodeOverride
-					: undefined}
+				: undefined}
 			position={backdropPosition}
 			bind:dominantColor={backdropColor}
 			bind:accentColor
@@ -675,9 +680,11 @@
 				{loadingSubtitles}
 				{activeTrackUrl}
 				accent={accentColor}
-				backdrop={item?.backdrops?.[0]
-					? imageUrl(item.backdrops[0], "original")
-					: undefined}
+				backdrop={activeEpisode?.stills?.[0]
+					? imageUrl(activeEpisode.stills[0], "original")
+					: item?.backdrops?.[0]
+						? imageUrl(item.backdrops[0], "original")
+						: undefined}
 				startTime={playerStartTime}
 				streams={playingLocal ? [] : streams}
 				activeStreamHash={selectedStream?.info_hash}
@@ -695,6 +702,14 @@
 {/if}
 
 <style>
+	.loading-screen {
+		position: fixed;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
 	:global(body) {
 		background: transparent !important;
 	}

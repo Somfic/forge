@@ -70,7 +70,7 @@ pub struct Episode {
     pub episode_number: i64,
     pub name: String,
     pub overview: Option<String>,
-    pub still_path: Option<String>,
+    pub stills: Vec<String>,
 }
 
 // --- Raw TMDB response types (private) ---
@@ -169,6 +169,11 @@ struct TmdbSeason {
 #[derive(Deserialize)]
 struct TmdbSeasonDetail {
     episodes: Vec<TmdbEpisode>,
+}
+
+#[derive(Deserialize)]
+struct TmdbEpisodeImages {
+    stills: Vec<TmdbImage>,
 }
 
 #[derive(Deserialize)]
@@ -525,16 +530,65 @@ impl TmdbClient {
         let res = self.client.get(&url).send().await?.error_for_status()?;
         let body = res.text().await?;
         let detail: TmdbSeasonDetail = json::from_str(&body)?;
+
+        // Fetch episode images in parallel
+        let futs: Vec<_> = detail
+            .episodes
+            .iter()
+            .map(|e| self.fetch_episode_stills(tv_id, season_number, e.episode_number))
+            .collect();
+        let stills_results = futures::future::join_all(futs).await;
+
         Ok(detail
             .episodes
             .into_iter()
-            .map(|e| Episode {
-                episode_number: e.episode_number,
-                name: e.name,
-                overview: e.overview,
-                still_path: e.still_path,
+            .zip(stills_results)
+            .map(|(e, stills)| {
+                let mut stills = stills.unwrap_or_default();
+                // Use the default still_path as fallback if images endpoint returned nothing
+                if stills.is_empty() {
+                    if let Some(ref path) = e.still_path {
+                        stills.push(path.clone());
+                    }
+                }
+                Episode {
+                    episode_number: e.episode_number,
+                    name: e.name,
+                    overview: e.overview,
+                    stills,
+                }
             })
             .collect())
+    }
+
+    async fn fetch_episode_stills(
+        &self,
+        tv_id: i64,
+        season_number: i64,
+        episode_number: i64,
+    ) -> forge::Result<Vec<String>> {
+        let url = format!(
+            "https://api.themoviedb.org/3/tv/{}/season/{}/episode/{}/images?api_key={}&include_image_language=en,null",
+            tv_id, season_number, episode_number, self.api_key
+        );
+        let res = self.client.get(&url).send().await?.error_for_status()?;
+        let body = res.text().await?;
+        let imgs: TmdbEpisodeImages = json::from_str(&body)?;
+
+        let mut candidates: Vec<&TmdbImage> = imgs
+            .stills
+            .iter()
+            .filter(|s| s.width >= 1280)
+            .filter(|s| s.iso_639_1.is_none())
+            .collect();
+
+        candidates.sort_by(|a, b| {
+            b.vote_average
+                .partial_cmp(&a.vote_average)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(candidates.iter().map(|s| s.file_path.clone()).collect())
     }
 
     pub async fn trending(&self) -> forge::Result<Vec<SearchResult>> {

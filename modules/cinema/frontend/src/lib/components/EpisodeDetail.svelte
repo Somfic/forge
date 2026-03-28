@@ -29,17 +29,21 @@
 
 	const canResume = $derived(
 		resumeEntry?.season === season.season_number &&
-		resumeEntry?.episode === episode.episode_number &&
-		resumeEntry?.info_hash &&
-		resumeEntry?.progress > 0
+			resumeEntry?.episode === episode.episode_number &&
+			resumeEntry?.info_hash &&
+			resumeEntry?.progress > 0,
 	);
 
 	const remainingMin = $derived(
-		canResume && resumeEntry ? Math.ceil((resumeEntry.duration - resumeEntry.progress) / 60) : null
+		canResume && resumeEntry
+			? Math.ceil((resumeEntry.duration - resumeEntry.progress) / 60)
+			: null,
 	);
 
 	const progressPct = $derived(
-		canResume && resumeEntry ? (resumeEntry.progress / resumeEntry.duration) * 100 : 0
+		canResume && resumeEntry
+			? (resumeEntry.progress / resumeEntry.duration) * 100
+			: 0,
 	);
 </script>
 
@@ -47,49 +51,63 @@
 	<Button variant="ghost" icon="ArrowLeft" onclick={onback} />
 	{#each season.episodes as ep}
 		<MediaCard
-			src={ep.still_path ? imageUrl(ep.still_path, "w185") : ""}
+			src={ep.stills[0] ? imageUrl(ep.stills[0], "w185") : ""}
 			aspectRatio="16/9"
-			onclick={() => onselectepisode(season.season_number, ep.episode_number)}
+			onclick={() =>
+				onselectepisode(season.season_number, ep.episode_number)}
 		>
 			{#snippet bottomLeft()}
-				<Text size="xs" variant="muted">S{season.season_number} E{ep.episode_number}</Text>
+				<Text size="xs" variant="muted"
+					>S{season.season_number} E{ep.episode_number}</Text
+				>
 			{/snippet}
 		</MediaCard>
 	{/each}
 </div>
 
 <div class="sidebar">
-	<h2 class="ep-title">{episode.name}</h2>
-	<div class="meta">
-		<Text as="span" variant="secondary" size="sm">
-			S{season.season_number} E{episode.episode_number}
-		</Text>
-		<Text as="span" variant="secondary" size="sm">{showTitle}</Text>
+	<div class="top">
+		<h2 class="ep-title">{episode.name}</h2>
+		<div class="meta">
+			<Text as="span" variant="secondary" size="sm">
+				S{season.season_number} E{episode.episode_number}
+			</Text>
+			<Text as="span" variant="secondary" size="sm">{showTitle}</Text>
+		</div>
+
+		{#if episode.overview}
+			<div class="overview">
+				<Text size="sm">{episode.overview}</Text>
+			</div>
+		{/if}
+	</div>
+	<div class="bottom">
+		{#if onplay}
+			<PlayCard
+				image={episode.stills[1]
+					? imageUrl(episode.stills[1], "w780")
+					: episode.stills[0]
+						? imageUrl(episode.stills[0], "w780")
+						: undefined}
+				label="S{season.season_number} E{episode.episode_number}"
+				action={canResume ? "Continue" : (episode.name ?? "Play")}
+				remaining={remainingMin
+					? `${remainingMin} min left`
+					: undefined}
+				progress={progressPct}
+				loading={loadingStreams}
+				onclick={onplay}
+			/>
+		{/if}
 	</div>
 
-	{#if episode.overview}
-		<Text size="sm">{episode.overview}</Text>
-	{/if}
-
-	{#if onplay}
-		<PlayCard
-			image={episode.still_path ? imageUrl(episode.still_path, "w780") : undefined}
-			label="S{season.season_number} E{episode.episode_number}"
-			action={canResume ? "Continue" : episode.name ?? "Play"}
-			remaining={remainingMin ? `${remainingMin} min left` : undefined}
-			progress={progressPct}
-			loading={loadingStreams}
-			onclick={onplay}
-		/>
-	{/if}
-
-	<DownloadButton
+	<!-- <DownloadButton
 		mediaType="tv"
 		{tmdbId}
 		title={showTitle}
 		season={season.season_number}
 		episode={episode.episode_number}
-	/>
+	/> -->
 </div>
 
 <style>
@@ -112,6 +130,10 @@
 		flex-shrink: 0;
 	}
 
+	.overview {
+		margin-top: 1rem;
+	}
+
 	.sidebar {
 		width: 35vw;
 		height: 100vh;
@@ -120,6 +142,7 @@
 		padding-top: 15vh;
 		display: flex;
 		flex-direction: column;
+		justify-content: space-between;
 		gap: 0.75rem;
 	}
 

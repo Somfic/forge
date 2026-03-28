@@ -878,7 +878,8 @@
         "type": "object",
         "required": [
           "episode_number",
-          "name"
+          "name",
+          "stills"
         ],
         "properties": {
           "episode_number": {
@@ -894,11 +895,11 @@
               "null"
             ]
           },
-          "still_path": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "stills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

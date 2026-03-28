@@ -73,8 +73,7 @@ export interface Episode {
   name: string;
   /** @nullable */
   overview?: string | null;
-  /** @nullable */
-  still_path?: string | null;
+  stills: string[];
 }
 
 export interface Genre {

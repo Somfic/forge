@@ -124,10 +124,10 @@
 	const firstEpisode = $derived(firstSeason?.episodes?.[0]);
 
 	const tvImage = $derived(
-		tvResume && resumeEpisode?.still_path
-			? imageUrl(resumeEpisode.still_path, "w780")
-			: firstEpisode?.still_path
-				? imageUrl(firstEpisode.still_path, "w780")
+		tvResume && resumeEpisode?.stills?.[0]
+			? imageUrl(resumeEpisode.stills[0], "w780")
+			: firstEpisode?.stills?.[0]
+				? imageUrl(firstEpisode.stills[0], "w780")
 				: undefined,
 	);
 	const tvLabel = $derived(
@@ -187,7 +187,9 @@
 			{/if}
 			{#if item.runtime}
 				<Text as="span" variant="secondary" size="sm"
-					>{Math.floor(item.runtime / 60) > 0 ? `${Math.floor(item.runtime / 60)}h ` : ""}{item.runtime % 60}min</Text
+					>{Math.floor(item.runtime / 60) > 0
+						? `${Math.floor(item.runtime / 60)}h `
+						: ""}{item.runtime % 60}min</Text
 				>
 			{/if}
 			{#if item.seasons}
@@ -239,12 +241,12 @@
 				onclick={() => onselectseason(item.seasons![0].season_number)}
 			/>
 		{/if}
-		<DownloadButton
+		<!-- <DownloadButton
 			mediaType={item.media_type}
 			tmdbId={item.id}
 			title={item.title}
 			posterPath={item.poster_path ?? undefined}
-		/>
+		/> -->
 	</div>
 
 	{#if item.media_type === "movie" && (movieResume ? onresume : onwatch)}

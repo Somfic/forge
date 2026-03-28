@@ -53,8 +53,8 @@
 			<div class="episode-grid">
 				{#each season.episodes as ep}
 					<MediaCard
-						src={ep.still_path
-							? imageUrl(ep.still_path, "w780")
+						src={ep.stills[0]
+							? imageUrl(ep.stills[0], "w780")
 							: ""}
 						aspectRatio="16/9"
 						onclick={() =>

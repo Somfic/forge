@@ -18,12 +18,29 @@
 		loading?: boolean;
 		onclick: () => void;
 	} = $props();
+
+	let bgA = $state<HTMLImageElement>(undefined!);
+	let bgB = $state<HTMLImageElement>(undefined!);
+	let useA = true;
+
+	$effect(() => {
+		if (!image || !bgA || !bgB) return;
+		const incoming = useA ? bgA : bgB;
+		const outgoing = useA ? bgB : bgA;
+		const img = new Image();
+		img.src = image;
+		img.onload = () => {
+			incoming.src = image;
+			incoming.style.opacity = "1";
+			outgoing.style.opacity = "0";
+			useA = !useA;
+		};
+	});
 </script>
 
 <button class="card" {onclick}>
-	{#if image}
-		<img class="bg" src={image} alt="" />
-	{/if}
+	<img class="bg" bind:this={bgA} alt="" />
+	<img class="bg" bind:this={bgB} alt="" />
 	<div class="overlay"></div>
 	<div class="play-icon" class:spinning={loading}>
 		<Icon name={loading ? "LoaderCircle" : "Play"} size={36} />
@@ -69,6 +86,8 @@
 		width: 100%;
 		height: 100%;
 		object-fit: cover;
+		opacity: 0;
+		transition: opacity 0.5s ease;
 	}
 
 	.overlay {

@@ -153,7 +153,6 @@
 		stopCycling();
 		if (!images.length) return;
 		index = 0;
-		useA = true;
 		crossfadeTo(images[0]);
 		startCycling();
 	});

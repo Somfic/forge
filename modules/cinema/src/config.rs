@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct CinemaConfig {
+    #[serde(default)]
     pub tmdb_api_key: String,
     #[serde(default = "default_stream_sources")]
     pub stream_sources: Vec<String>,

@@ -48,10 +48,10 @@ impl Config {
     }
 
     pub fn module_config<T: DeserializeOwned>(&self, key: &str) -> Result<T> {
-        self.modules
-            .get(key)
-            .ok_or_else(|| panic!("missing config section [{key}]"))
-            .and_then(|v| v.clone().try_into().map_err(Into::into))
+        match self.modules.get(key) {
+            Some(v) => Ok(v.clone().try_into()?),
+            None => Ok(toml::from_str("")?),
+        }
     }
 
     pub fn module_config_env<T: DeserializeOwned + EnvOverride>(&self, key: &str) -> Result<T> {

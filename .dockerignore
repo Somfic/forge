@@ -1,0 +1,4 @@
+target/
+data/
+frontend/node_modules/
+.git/

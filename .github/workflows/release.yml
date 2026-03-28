@@ -4,14 +4,13 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
-  version:
-    name: version
+  release:
+    name: release
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.semver.outputs.version }}
-      should_release: ${{ steps.semver.outputs.should_release }}
-      changelog: ${{ steps.semver.outputs.changelog }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -20,10 +19,10 @@ jobs:
       - name: Calculate version
         id: semver
         run: |
-          # Find the latest semver tag or default to 0.0.0
-          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+          # Find the latest stable (non-draft) semver tag
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
           if [ -z "$LATEST_TAG" ]; then
-            LATEST_TAG="0.0.0"
+            LATEST_TAG="v0.0.0"
             MAJOR=0; MINOR=0; PATCH=0
             REF="$(git rev-list --max-parents=0 HEAD)"
           else
@@ -34,9 +33,9 @@ jobs:
             REF="$LATEST_TAG"
           fi
 
-          echo "Latest tag: $LATEST_TAG (${MAJOR}.${MINOR}.${PATCH})"
+          echo "Latest stable tag: $LATEST_TAG (${MAJOR}.${MINOR}.${PATCH})"
 
-          # Read commits since last tag
+          # Read commits since last stable tag
           COMMITS=$(git log "${REF}..HEAD" --pretty=format:"%H %s" 2>/dev/null || true)
           if [ -z "$COMMITS" ]; then
             echo "No new commits since last tag"
@@ -55,7 +54,6 @@ jobs:
             SUBJECT=$(echo "$line" | cut -d' ' -f2-)
             BODY=$(git log -1 --pretty=format:"%b" "$HASH")
 
-            # Check for semver tag in body
             if echo "$BODY" | grep -qi "semver: major"; then
               BUMP="major"
               BREAKING="${BREAKING}- ${SUBJECT}\n"
@@ -99,37 +97,41 @@ jobs:
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
           echo "should_release=true" >> "$GITHUB_OUTPUT"
 
-          echo "## Version: ${NEW_VERSION}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Bump:** ${BUMP}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo -e "$CHANGELOG" >> "$GITHUB_STEP_SUMMARY"
-
-          # Use delimiter for multiline output
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
           echo "changelog<<${EOF}" >> "$GITHUB_OUTPUT"
           echo -e "$CHANGELOG" >> "$GITHUB_OUTPUT"
           echo "${EOF}" >> "$GITHUB_OUTPUT"
 
-  release:
-    name: release
-    needs: version
-    if: needs.version.outputs.should_release == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Create Git tag
+      - name: Delete existing draft release
+        if: steps.semver.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git tag "v${{ needs.version.outputs.version }}"
-          git push origin "v${{ needs.version.outputs.version }}"
+          VERSION="${{ steps.semver.outputs.version }}"
+          DRAFT_TAG="v${VERSION}-draft"
 
-      - name: Create Draft Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.version.outputs.version }}
-          name: v${{ needs.version.outputs.version }}
-          body: ${{ needs.version.outputs.changelog }}
-          draft: true
+          # Delete existing draft release if it exists
+          RELEASE_ID=$(gh release view "$DRAFT_TAG" --json id --jq '.id' 2>/dev/null || true)
+          if [ -n "$RELEASE_ID" ]; then
+            echo "Deleting existing draft release for $DRAFT_TAG"
+            gh release delete "$DRAFT_TAG" --yes
+          fi
+
+          # Delete existing draft tag if it exists
+          git push origin ":refs/tags/${DRAFT_TAG}" 2>/dev/null || true
+
+      - name: Create draft release
+        if: steps.semver.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ steps.semver.outputs.version }}"
+          DRAFT_TAG="v${VERSION}-draft"
+
+          git tag "$DRAFT_TAG"
+          git push origin "$DRAFT_TAG"
+
+          gh release create "$DRAFT_TAG" \
+            --title "v${VERSION}" \
+            --notes "${{ steps.semver.outputs.changelog }}" \
+            --draft

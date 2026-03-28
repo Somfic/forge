@@ -8,13 +8,52 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
+  retag:
+    name: retag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Retag to stable version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DRAFT_TAG="${{ github.event.release.tag_name }}"
+          VERSION="${DRAFT_TAG%-draft}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # If the tag doesn't end in -draft, nothing to do
+          if [ "$DRAFT_TAG" = "$VERSION" ]; then
+            echo "Tag is already stable, skipping retag"
+            exit 0
+          fi
+
+          # Create stable tag at the same commit
+          COMMIT=$(git rev-list -n 1 "$DRAFT_TAG")
+          git tag "$VERSION" "$COMMIT"
+          git push origin "$VERSION"
+
+          # Update the release to use the stable tag
+          gh release edit "$DRAFT_TAG" --tag "$VERSION"
+
+          # Delete the draft tag
+          git push origin ":refs/tags/${DRAFT_TAG}"
+
   publish:
     name: publish
+    needs: retag
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
-
     steps:
       - uses: actions/checkout@v6
 
@@ -37,7 +76,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ github.event.release.tag_name }}
+            type=raw,value=${{ needs.retag.outputs.version }}
             type=raw,value=latest
 
       - name: Build and Push

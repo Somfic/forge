@@ -36,6 +36,27 @@ pub struct AudioTrack {
     pub language: Option<String>,
 }
 
+#[derive(serde::Serialize, Clone, utoipa::ToSchema)]
+pub struct EmbeddedSubtitleTrack {
+    /// ffmpeg absolute stream index
+    pub index: usize,
+    /// subtitle-only index (0, 1, 2...)
+    pub stream_index: usize,
+    pub language: Option<String>,
+    pub name: String,
+    pub codec: String,
+}
+
+/// Text-based subtitle codecs that can be extracted as SRT
+const TEXT_SUB_CODECS: &[&str] = &[
+    "srt",
+    "subrip",
+    "ass",
+    "ssa",
+    "webvtt",
+    "mov_text",
+];
+
 /// Trait combining AsyncRead + AsyncSeek for torrent file streaming.
 trait AsyncReadSeek: AsyncRead + AsyncSeek + Send + Unpin {}
 impl<T: AsyncRead + AsyncSeek + Send + Unpin> AsyncReadSeek for T {}
@@ -190,7 +211,7 @@ impl TorrentEngine {
             }
         }
 
-        let opts = AddTorrentOptions {
+        let make_opts = || AddTorrentOptions {
             only_files: Some(vec![file_idx]),
             sub_folder: Some(info_hash.to_string()),
             overwrite: true,
@@ -198,8 +219,26 @@ impl TorrentEngine {
         };
 
         // Try .torrent file first (has embedded trackers), fall back to magnet
-        let add = if let Some(torrent_bytes) = self.fetch_torrent_file(info_hash).await {
-            AddTorrent::from_bytes(torrent_bytes)
+        let response = if let Some(torrent_bytes) = self.fetch_torrent_file(info_hash).await {
+            let add = AddTorrent::from_bytes(torrent_bytes);
+            match self.session.add_torrent(add, Some(make_opts())).await {
+                Ok(resp) => resp,
+                Err(e) => {
+                    self.span.in_scope(|| {
+                        tracing::warn!(
+                            info_hash,
+                            error = %e,
+                            "Failed to add .torrent file, falling back to magnet+DHT"
+                        )
+                    });
+                    let magnet = Self::magnet_url(info_hash);
+                    let add = AddTorrent::from_url(magnet);
+                    self.session
+                        .add_torrent(add, Some(make_opts()))
+                        .await
+                        .map_err(|e| forge::Error::Generic(format!("Failed to add torrent: {e}")))?
+                }
+            }
         } else {
             self.span.in_scope(|| {
                 tracing::info!(
@@ -208,14 +247,12 @@ impl TorrentEngine {
                 )
             });
             let magnet = Self::magnet_url(info_hash);
-            AddTorrent::from_url(magnet)
+            let add = AddTorrent::from_url(magnet);
+            self.session
+                .add_torrent(add, Some(make_opts()))
+                .await
+                .map_err(|e| forge::Error::Generic(format!("Failed to add torrent: {e}")))?
         };
-
-        let response = self
-            .session
-            .add_torrent(add, Some(opts))
-            .await
-            .map_err(|e| forge::Error::Generic(format!("Failed to add torrent: {e}")))?;
 
         let managed = match response {
             AddTorrentResponse::Added(_, handle) => handle,
@@ -398,6 +435,131 @@ impl TorrentEngine {
         probe.format.duration.and_then(|d| d.parse::<f64>().ok())
     }
 
+    /// Get embedded subtitle tracks in a file using ffprobe.
+    pub async fn subtitle_tracks(path: &std::path::Path) -> Vec<EmbeddedSubtitleTrack> {
+        let output = tokio::process::Command::new("ffprobe")
+            .args([
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
+                "-show_streams",
+                "-select_streams",
+                "s",
+            ])
+            .arg(path)
+            .output()
+            .await;
+
+        let output = match output {
+            Ok(o) if o.status.success() => o.stdout,
+            _ => return vec![],
+        };
+
+        #[derive(serde::Deserialize)]
+        struct Probe {
+            streams: Vec<ProbeStream>,
+        }
+        #[derive(serde::Deserialize)]
+        struct ProbeStream {
+            index: usize,
+            codec_name: Option<String>,
+            tags: Option<ProbeTags>,
+        }
+        #[derive(serde::Deserialize)]
+        struct ProbeTags {
+            language: Option<String>,
+            title: Option<String>,
+        }
+
+        let probe: Probe = match forge::json::from_slice(&output) {
+            Ok(p) => p,
+            Err(_) => return vec![],
+        };
+
+        probe
+            .streams
+            .into_iter()
+            .filter(|s| {
+                s.codec_name
+                    .as_deref()
+                    .map(|c| TEXT_SUB_CODECS.contains(&c))
+                    .unwrap_or(false)
+            })
+            .enumerate()
+            .map(|(i, s)| {
+                let tags = s.tags.as_ref();
+                let lang = tags.and_then(|t| t.language.clone());
+                let title = tags.and_then(|t| t.title.clone());
+                let codec = s.codec_name.unwrap_or_default();
+                let name = title.unwrap_or_else(|| {
+                    let mut label = codec.to_uppercase();
+                    if let Some(ref l) = lang {
+                        label = format!("{l} ({label})");
+                    }
+                    label
+                });
+                EmbeddedSubtitleTrack {
+                    index: s.index,
+                    stream_index: i,
+                    language: lang,
+                    name,
+                    codec,
+                }
+            })
+            .collect()
+    }
+
+    /// Extract subtitle cues from an embedded subtitle track.
+    /// Runs ffmpeg with a timeout since the file may be partially downloaded.
+    pub async fn extract_subtitle_cues(
+        path: &std::path::Path,
+        stream_index: usize,
+    ) -> Vec<crate::subtitles::SubtitleCue> {
+        let mut child = match tokio::process::Command::new("ffmpeg")
+            .args([
+                "-i",
+                path.to_str().unwrap_or(""),
+                "-map",
+                &format!("0:s:{stream_index}"),
+                "-f",
+                "srt",
+                "pipe:1",
+            ])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(_) => return vec![],
+        };
+
+        let stdout = match child.stdout.take() {
+            Some(s) => s,
+            None => return vec![],
+        };
+
+        use tokio::io::AsyncReadExt;
+        let result = tokio::time::timeout(std::time::Duration::from_secs(15), async {
+            let mut buf = Vec::new();
+            let mut reader = tokio::io::BufReader::new(stdout);
+            reader.read_to_end(&mut buf).await.ok();
+            buf
+        })
+        .await;
+
+        let _ = child.kill().await;
+
+        let output = match result {
+            Ok(buf) => buf,
+            Err(_) => return vec![],
+        };
+
+        let text = String::from_utf8_lossy(&output);
+        crate::subtitles::parse_srt(&text)
+    }
+
     /// Gracefully shut down the torrent engine.
     pub async fn shutdown(&self) {
         self.span
@@ -429,6 +591,17 @@ impl TorrentEngine {
                 }
             }
         });
+    }
+
+    /// Get stats for an active torrent by info hash.
+    pub fn stats(&self, info_hash: &str) -> forge::Result<librqbit::TorrentStats> {
+        let id = TorrentIdOrHash::parse(info_hash)
+            .map_err(|e| forge::Error::Generic(format!("Invalid info hash: {e}")))?;
+        let handle = self
+            .session
+            .get(id)
+            .ok_or_else(|| forge::Error::Generic("Torrent not found".into()))?;
+        Ok(handle.stats())
     }
 
     /// Remove a torrent from the session. Files are kept on disk.

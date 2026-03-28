@@ -13,6 +13,7 @@
 		type Stream,
 		type SubtitleTrack,
 		type SubtitleCue,
+		type EmbeddedSubtitleTrack,
 		type SearchResult,
 		similar as fetchSimilar,
 		recordWatch,
@@ -58,7 +59,18 @@
 		name: string;
 		language: string | null;
 	}
+	interface StreamStats {
+		progress_bytes: number;
+		total_bytes: number;
+		download_speed_mbps: number;
+		peers: number;
+		finished: boolean;
+	}
+	let streamStats = $state<StreamStats | null>(null);
+	let statsPollTimer: ReturnType<typeof setInterval> | undefined;
+
 	let fileAudioTracks = $state<AudioTrackInfo[]>([]);
+	let embeddedSubtitleTracks = $state<EmbeddedSubtitleTrack[]>([]);
 	let activeAudioIdx = $state(0);
 	let mediaDuration = $state(0);
 	let remuxTimeOffset = $state(0);
@@ -314,9 +326,11 @@
 				activeAudioIdx = 0;
 				remuxTimeOffset = 0;
 				pollAudioTracks(stream.info_hash, stream.file_idx);
+				if (!result.local) pollStreamStats(stream.info_hash);
 			})
 			.catch((e) => {
 				error = e.message;
+				selectedStream = null;
 			});
 
 		loadSubtitles();
@@ -332,9 +346,25 @@
 				const res = await fetch(`/cinema/api/stream/${infoHash}/${fileIdx}/audio`);
 				const data = await res.json();
 				const tracks: AudioTrackInfo[] = data.tracks ?? [];
-				if (tracks.length > 1) {
-					fileAudioTracks = tracks;
-					if (data.duration) mediaDuration = data.duration;
+				const subs: EmbeddedSubtitleTrack[] = data.subtitles ?? [];
+				if (tracks.length > 1) fileAudioTracks = tracks;
+				if (data.duration) mediaDuration = data.duration;
+				if (subs.length > 0 && embeddedSubtitleTracks.length === 0) {
+					embeddedSubtitleTracks = subs;
+					// Prepend embedded tracks to subtitle list
+					const embedded: SubtitleTrack[] = subs.map((s) => ({
+						id: `embedded:${s.stream_index}`,
+						language: s.language ?? "und",
+						url: `/cinema/api/stream/${infoHash}/${fileIdx}/subtitles/${s.stream_index}`,
+						score: 1000, // embedded subs are perfectly synced
+					}));
+					subtitleTracks = [...embedded, ...subtitleTracks];
+					// Auto-select first embedded track if no track is active
+					if (!activeTrackUrl && embedded.length > 0) {
+						selectSubtitleTrack(embedded[0]);
+					}
+				}
+				if (tracks.length > 1 || subs.length > 0) {
 					clearInterval(audioPollTimer);
 					audioPollTimer = undefined;
 				}
@@ -343,6 +373,27 @@
 
 		check();
 		audioPollTimer = setInterval(check, 10_000);
+	}
+
+	function pollStreamStats(infoHash: string) {
+		if (statsPollTimer) clearInterval(statsPollTimer);
+		streamStats = null;
+
+		const check = async () => {
+			try {
+				const res = await fetch(`/cinema/api/stream/${infoHash}/stats`);
+				const data: StreamStats = await res.json();
+				streamStats = data;
+			} catch {}
+		};
+
+		check();
+		statsPollTimer = setInterval(check, 2000);
+	}
+
+	function stopStreamStats() {
+		if (statsPollTimer) { clearInterval(statsPollTimer); statsPollTimer = undefined; }
+		streamStats = null;
 	}
 
 	function switchAudio(idx: number) {
@@ -384,7 +435,13 @@
 		loadingSubtitles = true;
 		activeTrackUrl = track.url;
 		try {
-			activeCues = (await subtitleCues({ url: track.url })).data;
+			if (track.id.startsWith("embedded:")) {
+				// Fetch directly from embedded subtitle extraction endpoint
+				const res = await fetch(track.url);
+				activeCues = await res.json();
+			} else {
+				activeCues = (await subtitleCues({ url: track.url })).data;
+			}
 		} catch {
 			activeCues = [];
 		} finally {
@@ -400,12 +457,14 @@
 	function stopPlaying() {
 		saveProgress();
 		if (audioPollTimer) { clearInterval(audioPollTimer); audioPollTimer = undefined; }
+		stopStreamStats();
 		selectedStream = null;
 		streamUrl = null;
 		subtitleTracks = [];
 		activeCues = [];
 		activeTrackUrl = undefined;
 		fileAudioTracks = [];
+		embeddedSubtitleTracks = [];
 		const u = new URL(window.location.href);
 		u.searchParams.delete("hash");
 		u.searchParams.delete("file");
@@ -467,8 +526,12 @@
 </script>
 
 {#if error}
-	<Banner variant="error" label={error} />
-{:else if !item}
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+	<div onclick={() => error = ''}>
+		<Banner variant="error" label={error} />
+	</div>
+{/if}
+{#if !item}
 	<Text variant="muted">Loading...</Text>
 {:else}
 	<!-- Backdrop -->
@@ -567,6 +630,7 @@
 			<VideoPlayer
 				src={streamUrl ?? ""}
 				subtitles={activeCues}
+				{streamStats}
 				title={playerTitle}
 				topline={playerTopline}
 				titleImage={item?.logo_path

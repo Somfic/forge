@@ -54,6 +54,7 @@
 		knownDuration = 0,
 		timeOffset = 0,
 		startTime = 0,
+		streamStats = null,
 		currentTime = $bindable(0),
 		duration = $bindable(0),
 		paused = $bindable(true),
@@ -84,6 +85,7 @@
 		startTime?: number;
 		currentTime?: number;
 		duration?: number;
+		streamStats?: { progress_bytes: number; total_bytes: number; download_speed_mbps: number; peers: number; finished: boolean } | null;
 		paused?: boolean;
 	} = $props();
 
@@ -145,7 +147,10 @@
 			onclick: () => onSubtitleOff?.(),
 		},
 		...subtitleTracks.map((track) => {
-			const dupes = subtitleTracks.filter((t) => t.language === track.language);
+			const isEmbedded = track.id.startsWith("embedded:");
+			const dupes = subtitleTracks.filter(
+				(t) => t.language === track.language && t.id.startsWith("embedded:") === isEmbedded,
+			);
 			const suffix = dupes.length > 1 ? ` #${dupes.indexOf(track) + 1}` : "";
 			return {
 				label: `${track.language}${suffix}`,
@@ -204,6 +209,18 @@
 	const bufferedPercent = $derived(
 		duration > 0 ? (buffered / duration) * 100 : 0,
 	);
+	const torrentPercent = $derived(
+		streamStats && streamStats.total_bytes > 0
+			? Math.round(streamStats.progress_bytes / streamStats.total_bytes * 100)
+			: 0,
+	);
+	let statsOpen = $state(false);
+
+	function formatBytes(bytes: number): string {
+		if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+		if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)} MB`;
+		return `${(bytes / 1024).toFixed(0)} KB`;
+	}
 
 	function formatTime(seconds: number): string {
 		if (!isFinite(seconds) || seconds < 0) return "0:00";
@@ -548,6 +565,14 @@
 
 	<div class="loading-spinner" class:visible={loading}>
 		<Spinner />
+		{#if streamStats && !streamStats.finished}
+			<div class="loading-progress">
+				<span class="loading-percent">{torrentPercent}%</span>
+				<span class="loading-detail">
+					{streamStats.download_speed_mbps.toFixed(1)} MB/s · {streamStats.peers} {streamStats.peers === 1 ? 'peer' : 'peers'}
+				</span>
+			</div>
+		{/if}
 	</div>
 
 	<div class="pause-icon" class:visible={paused && !loading && currentTime > 0}>
@@ -585,6 +610,38 @@
 						<span class="top-topline">{topline}</span>
 					{/if}
 				</div>
+				<div class="top-spacer"></div>
+				{#if streamStats}
+					<Popover align="right" bind:open={statsOpen}>
+						{#snippet trigger()}
+							<Button variant="ghost" icon="Info" />
+						{/snippet}
+						{#snippet children()}
+							<div class="stats-panel">
+								<div class="stats-row">
+									<span class="stats-label">Progress</span>
+									<span class="stats-value">{torrentPercent}%</span>
+								</div>
+								<div class="stats-row">
+									<span class="stats-label">Downloaded</span>
+									<span class="stats-value">{formatBytes(streamStats.progress_bytes)} / {formatBytes(streamStats.total_bytes)}</span>
+								</div>
+								<div class="stats-row">
+									<span class="stats-label">Speed</span>
+									<span class="stats-value">{streamStats.download_speed_mbps.toFixed(1)} MB/s</span>
+								</div>
+								<div class="stats-row">
+									<span class="stats-label">Peers</span>
+									<span class="stats-value">{streamStats.peers}</span>
+								</div>
+								<div class="stats-row">
+									<span class="stats-label">Status</span>
+									<span class="stats-value">{streamStats.finished ? 'Complete' : 'Downloading'}</span>
+								</div>
+							</div>
+						{/snippet}
+					</Popover>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -706,9 +763,14 @@
 						{/snippet}
 						{#snippet children()}
 							<div class="sub-menu">
-								{#each subtitleMenuItems as item}
+								{#each subtitleMenuItems as item, i}
 									<button class="sub-item" onclick={item.onclick}>
-										<span>{item.label}</span>
+										<span>
+											{item.label}
+											{#if i > 0 && subtitleTracks[i - 1]?.id.startsWith("embedded:")}
+												<span class="sub-badge">Embedded</span>
+											{/if}
+										</span>
 										{#if item.shortcut}
 											<span class="sub-dot">{item.shortcut}</span>
 										{/if}
@@ -845,15 +907,66 @@
 		position: absolute;
 		top: 75%;
 		left: 50%;
-		transform: translate(-50%, -50%);
+		transform: translateX(-50%);
 		z-index: 3;
 		pointer-events: none;
 		opacity: 0;
 		transition: opacity 150ms ease;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
 
 	.loading-spinner.visible {
 		opacity: 1;
+	}
+
+	.loading-progress {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		margin-top: 12px;
+	}
+
+	.loading-percent {
+		font-family: "JetBrains Mono", monospace;
+		font-size: 0.9rem;
+		font-weight: 500;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.loading-detail {
+		font-family: "JetBrains Mono", monospace;
+		font-size: 0.7rem;
+		color: rgba(255, 255, 255, 0.4);
+	}
+
+	/* ── Stats panel ── */
+	.stats-panel {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 10px 14px;
+		min-width: 200px;
+	}
+
+	.stats-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 16px;
+	}
+
+	.stats-label {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.5);
+	}
+
+	.stats-value {
+		font-family: "JetBrains Mono", monospace;
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.85);
 	}
 
 	/* ── Pause icon ── */
@@ -917,6 +1030,10 @@
 		gap: 8px;
 		padding: 12px 16px;
 		z-index: 1;
+	}
+
+	.top-spacer {
+		flex: 1;
 	}
 
 	.top-text {
@@ -1187,6 +1304,15 @@
 	.sub-item:hover {
 		background: rgba(255, 255, 255, 0.08);
 		color: #fff;
+	}
+
+	.sub-badge {
+		font-size: 0.55rem;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: rgba(255, 255, 255, 0.4);
+		margin-left: 6px;
+		vertical-align: middle;
 	}
 
 	.sub-dot {

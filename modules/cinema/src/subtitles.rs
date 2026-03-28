@@ -38,7 +38,7 @@ pub struct SubtitleCue {
 }
 
 /// Map ISO 639-1 (2-letter) to ISO 639-2/B (3-letter) codes used by OpenSubtitles
-fn to_iso639_2(code: &str) -> &str {
+pub fn to_iso639_2(code: &str) -> &str {
     match code {
         "en" => "eng",
         "nl" => "dut",
@@ -149,7 +149,7 @@ pub async fn fetch_cues(client: &HttpClient, srt_url: &str) -> Vec<SubtitleCue> 
 }
 
 /// Parse SRT format into subtitle cues
-fn parse_srt(input: &str) -> Vec<SubtitleCue> {
+pub fn parse_srt(input: &str) -> Vec<SubtitleCue> {
     let mut cues = Vec::new();
     let input = input.trim_start_matches('\u{feff}'); // strip BOM
     // Normalize line endings: \r\n → \n

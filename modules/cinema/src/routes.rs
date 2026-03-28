@@ -41,8 +41,10 @@ pub fn router() -> OpenApiRouter<AppContext> {
         .routes(routes!(list_downloads))
         .routes(routes!(delete_download))
         .routes(routes!(estimate_download))
+        .route("/stream/{info_hash}/stats", axum::routing::get(stream_stats))
         .route("/stream/{info_hash}/{file_idx}", axum::routing::get(stream_file))
         .route("/stream/{info_hash}/{file_idx}/audio", axum::routing::get(stream_audio_tracks))
+        .route("/stream/{info_hash}/{file_idx}/subtitles/{stream_index}", axum::routing::get(stream_embedded_subtitles))
         .route("/stream/{info_hash}/{file_idx}/remux", axum::routing::get(stream_remux))
         .route("/image/{*path}", axum::routing::get(image_proxy))
         .route("/files/{*path}", axum::routing::get(serve_file))
@@ -643,6 +645,36 @@ async fn estimate_download(
     Ok(Json(estimates))
 }
 
+#[derive(Serialize, ToSchema)]
+struct StreamStatsResponse {
+    progress_bytes: u64,
+    total_bytes: u64,
+    download_speed_mbps: f64,
+    peers: usize,
+    finished: bool,
+}
+
+async fn stream_stats(
+    Path(info_hash): Path<String>,
+) -> Result<Json<StreamStatsResponse>, AppError> {
+    let engine = TorrentEngine::get();
+    let stats = engine.stats(&info_hash)?;
+    let (download_speed_mbps, peers) = match &stats.live {
+        Some(live) => (
+            live.download_speed.mbps,
+            live.snapshot.peer_stats.live,
+        ),
+        None => (0.0, 0),
+    };
+    Ok(Json(StreamStatsResponse {
+        progress_bytes: stats.progress_bytes,
+        total_bytes: stats.total_bytes,
+        download_speed_mbps,
+        peers,
+        finished: stats.finished,
+    }))
+}
+
 async fn stream_file(
     Path((info_hash, file_idx)): Path<(String, usize)>,
     req: axum::http::Request<axum::body::Body>,
@@ -666,16 +698,47 @@ async fn stream_file(
 }
 
 async fn stream_audio_tracks(
+    State(ctx): State<AppContext>,
     Path((info_hash, file_idx)): Path<(String, usize)>,
 ) -> Result<Json<forge::json::Value>, AppError> {
     let engine = TorrentEngine::get();
     let path = engine.file_path(&info_hash, file_idx)?;
-    let tracks = TorrentEngine::audio_tracks(&path).await;
-    let duration = TorrentEngine::probe_duration(&path).await;
+    let (tracks, subtitles, duration) = tokio::join!(
+        TorrentEngine::audio_tracks(&path),
+        TorrentEngine::subtitle_tracks(&path),
+        TorrentEngine::probe_duration(&path),
+    );
+
+    // Filter embedded subtitle tracks by configured languages
+    let subtitles = if let Ok(config) = ctx.config.module_config_env::<CinemaConfig>("cinema") {
+        let allowed: Vec<&str> = config.subtitle_languages.iter().map(|l| crate::subtitles::to_iso639_2(l)).collect();
+        subtitles
+            .into_iter()
+            .filter(|s| {
+                s.language
+                    .as_deref()
+                    .map(|l| allowed.contains(&l))
+                    .unwrap_or(true) // keep tracks with unknown language
+            })
+            .collect()
+    } else {
+        subtitles
+    };
+
     Ok(Json(forge::json::json!({
         "tracks": tracks,
+        "subtitles": subtitles,
         "duration": duration,
     })))
+}
+
+async fn stream_embedded_subtitles(
+    Path((info_hash, file_idx, stream_index)): Path<(String, usize, usize)>,
+) -> Result<Json<Vec<SubtitleCue>>, AppError> {
+    let engine = TorrentEngine::get();
+    let path = engine.file_path(&info_hash, file_idx)?;
+    let cues = TorrentEngine::extract_subtitle_cues(&path, stream_index).await;
+    Ok(Json(cues))
 }
 
 #[derive(Deserialize, IntoParams)]

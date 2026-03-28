@@ -15,133 +15,65 @@
 		onselectepisode: (season: number, episode: number) => void;
 	} = $props();
 
-	let episodeAreaEl = $state<HTMLDivElement | undefined>(undefined);
-
-	export function scrollToSeason(seasonNumber: number) {
-		const el = document.getElementById(`season-${seasonNumber}`);
-		if (el && episodeAreaEl) {
-			episodeAreaEl.scrollTo({
-				top: el.offsetTop - episodeAreaEl.offsetTop,
-				behavior: "smooth",
-			});
-		}
-	}
+	const selectableSeasons = $derived(seasons.filter((s) => s.episodes.length > 0));
+	const cols = $derived(selectableSeasons.length <= 4 ? selectableSeasons.length : Math.ceil(selectableSeasons.length / 2));
 </script>
 
-<div class="season-strip">
-	<Button variant="ghost" icon="ArrowLeft" onclick={onback} />
-	{#each seasons as season}
-		<MediaCard
-			src={season.poster_path ? imageUrl(season.poster_path, "w92") : ""}
-			aspectRatio="2/3"
-			onclick={() => {
-				onscrollseason(season.season_number);
-				scrollToSeason(season.season_number);
-			}}
-		>
-			{#snippet bottomLeft()}
-				<Text size="xs" variant="muted">S {season.season_number}</Text>
-			{/snippet}
-		</MediaCard>
-	{/each}
-</div>
-
-<div class="episode-area" bind:this={episodeAreaEl}>
-	{#each seasons as season}
-		<div class="season-section" id="season-{season.season_number}">
-			<Text weight="semibold" size="sm">{season.name}</Text>
-			<div class="episode-grid">
-				{#each season.episodes as ep}
-					<MediaCard
-						src={ep.stills[0]
-							? imageUrl(ep.stills[0], "w780")
-							: ""}
-						aspectRatio="16/9"
-						onclick={() =>
-							onselectepisode(
-								season.season_number,
-								ep.episode_number,
-							)}
-					>
-						{#snippet bottomLeft()}
-							<Text size="xs" variant="muted">{ep.name}</Text>
-						{/snippet}
-						{#snippet bottomRight()}
-							<Text size="xs" variant="muted"
-								>S{season.season_number} E{ep.episode_number}</Text
-							>
-						{/snippet}
-					</MediaCard>
-				{/each}
-			</div>
-		</div>
-	{/each}
+<div class="browser">
+	<div class="back">
+		<Button variant="ghost" icon="ArrowLeft" onclick={onback} />
+	</div>
+	<div class="season-grid" style="grid-template-columns: repeat({cols}, 180px)">
+		{#each selectableSeasons as season}
+			<MediaCard
+				src={season.poster_path
+					? imageUrl(season.poster_path, "w780")
+					: ""}
+				aspectRatio="2/3"
+				onclick={() => {
+					onscrollseason(season.season_number);
+					onselectepisode(season.season_number, 1);
+				}}
+			/>
+		{/each}
+	</div>
 </div>
 
 <style>
-	.season-strip {
-		width: 100px;
-		flex-shrink: 0;
-		padding: 1rem 0.5rem;
-		padding-top: 2rem;
+	.browser {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.5rem;
-		overflow-y: auto;
-		background: rgba(0, 0, 0, 0.3);
-		backdrop-filter: blur(12px);
-	}
-
-	.season-strip :global(> *) {
-		width: 80px;
-		flex-shrink: 0;
-	}
-
-	.episode-area {
-		flex: 1;
+		justify-content: center;
+		width: 100%;
+		height: 100%;
 		padding: 2rem;
-		overflow-y: auto;
-		display: flex;
-		flex-direction: column;
-		gap: 2rem;
-		scroll-behavior: smooth;
+		gap: 1rem;
+		background: rgba(0, 0, 0, 0.35);
+		backdrop-filter: blur(16px);
 	}
 
-	.season-section {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
+	.back {
+		position: absolute;
+		top: 2rem;
+		left: 2rem;
 	}
 
-	.episode-grid {
+	.season-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: 0.75rem;
+		gap: 1rem;
+		justify-content: center;
+		overflow-y: auto;
+		width: 100%;
 	}
 
 	@media (max-width: 768px) {
-		.season-strip {
-			width: 100%;
-			height: auto;
-			flex-direction: row;
-			padding: 0.5rem;
-			padding-top: 0.5rem;
-			overflow-x: auto;
-			overflow-y: hidden;
-		}
-
-		.season-strip :global(> *) {
-			width: 60px;
-			flex-shrink: 0;
-		}
-
-		.episode-area {
+		.browser {
 			padding: 1rem;
 		}
 
-		.episode-grid {
-			grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+		.season-grid {
+			grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
 		}
 	}
 </style>

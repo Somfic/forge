@@ -108,6 +108,14 @@
 			: item?.title,
 	);
 
+	const pageTitle = $derived(
+		item?.title
+			? selectedSeason !== null && selectedEpisode !== null
+				? `${item.title} · S${selectedSeason} E${selectedEpisode}`
+				: item.title
+			: "Cinema",
+	);
+
 	const playerTopline = $derived(
 		item?.media_type === "tv" &&
 			selectedSeason !== null &&
@@ -554,6 +562,10 @@
 	// Save on page leave
 	onDestroy(() => saveProgress());
 </script>
+
+<svelte:head>
+	<title>{pageTitle}</title>
+</svelte:head>
 
 {#if error}
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->

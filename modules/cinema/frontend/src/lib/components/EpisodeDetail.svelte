@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Season, Episode, WatchHistoryItem } from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
-	import { Button, MediaCard, Text } from "glow";
+	import { Button, Text } from "glow";
 	import PlayCard from "./PlayCard.svelte";
 	import DownloadButton from "./DownloadButton.svelte";
 
@@ -49,20 +49,27 @@
 
 <div class="episode-strip">
 	<Button variant="ghost" icon="ArrowLeft" onclick={onback} />
-	{#each season.episodes as ep}
-		<MediaCard
-			src={ep.stills[0] ? imageUrl(ep.stills[0], "w185") : ""}
-			aspectRatio="16/9"
-			onclick={() =>
-				onselectepisode(season.season_number, ep.episode_number)}
-		>
-			{#snippet bottomLeft()}
-				<Text size="xs" variant="muted"
-					>S{season.season_number} E{ep.episode_number}</Text
-				>
-			{/snippet}
-		</MediaCard>
-	{/each}
+	<Text size="sm" weight="semibold">{season.name}</Text>
+	<div class="episode-list">
+		{#each season.episodes as ep}
+			<button
+				class="episode-row"
+				class:active={ep.episode_number === episode.episode_number}
+				onclick={() =>
+					onselectepisode(season.season_number, ep.episode_number)}
+			>
+				<img
+					class="ep-thumb"
+					src={ep.stills[0] ? imageUrl(ep.stills[0], "w185") : ""}
+					alt=""
+				/>
+				<div class="ep-info">
+					<Text size="xs" variant="muted">Episode {ep.episode_number}</Text>
+					<Text size="sm" weight="semibold">{ep.name}</Text>
+				</div>
+			</button>
+		{/each}
+	</div>
 </div>
 
 <div class="sidebar">
@@ -112,22 +119,59 @@
 
 <style>
 	.episode-strip {
-		width: 140px;
+		width: 340px;
 		flex-shrink: 0;
-		padding: 1rem 0.5rem;
+		padding: 1rem;
 		padding-top: 2rem;
 		display: flex;
 		flex-direction: column;
-		align-items: center;
 		gap: 0.5rem;
 		overflow-y: auto;
-		background: rgba(0, 0, 0, 0.3);
-		backdrop-filter: blur(12px);
 	}
 
-	.episode-strip :global(> *) {
-		width: 120px;
+	.episode-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.episode-row {
+		display: flex;
+		gap: 0.75rem;
+		align-items: center;
+		padding: 0.4rem;
+		border-radius: 8px;
+		cursor: pointer;
+		background: transparent;
+		border: none;
+		text-align: left;
+		color: inherit;
+		transition: background 0.15s;
+	}
+
+	.episode-row:hover {
+		background: rgba(255, 255, 255, 0.05);
+	}
+
+	.episode-row.active {
+		background: rgba(255, 255, 255, 0.08);
+	}
+
+	.ep-thumb {
+		width: 100px;
 		flex-shrink: 0;
+		aspect-ratio: 16/9;
+		object-fit: cover;
+		border-radius: 6px;
+		background: var(--bg-surface, #1a1a2e);
+	}
+
+	.ep-info {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
 	.overview {
@@ -164,16 +208,12 @@
 			width: 100%;
 			height: auto;
 			max-height: 30vh;
-			flex-direction: row;
 			padding: 0.5rem;
 			padding-top: 0.5rem;
-			overflow-x: auto;
-			overflow-y: hidden;
 		}
 
-		.episode-strip :global(> *) {
-			width: 100px;
-			flex-shrink: 0;
+		.ep-thumb {
+			width: 80px;
 		}
 
 		.sidebar {

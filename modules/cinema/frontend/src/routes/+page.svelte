@@ -71,6 +71,10 @@
 	}
 </script>
 
+<svelte:head>
+	<title>Cinema</title>
+</svelte:head>
+
 <div class="content">
 	<Input
 		type="text"

@@ -142,7 +142,7 @@ impl TorrentEngine {
             let url = template.replace("{}", &hash_upper);
             match self.http.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => match resp.bytes().await {
-                    Ok(bytes) if bytes.len() > 50 => {
+                    Ok(bytes) if bytes.len() > 50 && bytes[0] == b'd' => {
                         self.span.in_scope(|| tracing::info!(info_hash, url, "Fetched .torrent file from cache"));
                         return Some(bytes);
                     }

@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/forge /usr/local/bin/forge
+COPY --from=builder /app/frontend/apps/dashboard/build /app/frontend/apps/dashboard/build
+COPY --from=builder /app/modules/cinema/frontend/build /app/modules/cinema/frontend/build
 
 WORKDIR /app
 ENTRYPOINT ["forge"]

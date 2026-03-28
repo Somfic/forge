@@ -87,15 +87,15 @@
 	{#if browsing}
 		{#if historyItems.length > 0}
 			<section>
-				<Heading level={2}>Continue Watching</Heading>
+				<Heading level={2}>Continue watching</Heading>
 				<div class="row">
 					{#each historyItems as item}
-						{@const minLeft = Math.ceil(
+						{@const minLeft = Math.max(0, Math.ceil(
 							(item.duration - item.progress) / 60,
-						)}
+						))}
 						{@const pct =
 							item.duration > 0
-								? (item.progress / item.duration) * 100
+								? item.progress / item.duration
 								: 0}
 						<MediaCard
 							src={item.poster_path

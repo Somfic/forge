@@ -17,9 +17,13 @@ The `data/` directory must be persisted across container restarts using a volume
 - [ ] photos / videos
 - [ ] movies / tv
     - [x] tmdb integration
+    - [ ] recommendations (able to turn off)
     - [ ] auto skip intro
     - [x] subtitles
+        - [ ] configurable font + color
     - [ ] watch parties
         - [ ] sync playback
+    - [ ] frame generation (lsfg) ??
+    - [ ] external video player support (mpv, vlc, etc.)
 - [ ] music
 - [ ] books

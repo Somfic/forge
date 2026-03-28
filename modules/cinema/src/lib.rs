@@ -51,7 +51,7 @@ impl Module for CinemaModule {
     }
 
     async fn on_start(&self, ctx: AppContext) -> forge::Result<()> {
-        let config = ctx.config.module_config::<config::CinemaConfig>("cinema")?;
+        let config = ctx.config.module_config_env::<config::CinemaConfig>("cinema")?;
 
         torrent::TorrentEngine::init(&config, &ctx.storage, ctx.http.clone()).await?;
 
@@ -66,7 +66,7 @@ impl Module for CinemaModule {
     }
 
     async fn health_check(&self, ctx: AppContext) -> forge::Result<Vec<forge::HealthCheck>> {
-        let config = ctx.config.module_config::<config::CinemaConfig>("cinema")?;
+        let config = ctx.config.module_config_env::<config::CinemaConfig>("cinema")?;
         let client = tmdb::TmdbClient::new(&config, ctx.http.clone());
 
         let start = std::time::Instant::now();

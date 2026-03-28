@@ -1,5 +1,32 @@
+use std::path::PathBuf;
+
+use clap::Parser;
 use cinema::CinemaModule;
 use forge::{Config, Platform, Result};
+
+#[derive(Parser)]
+#[command(name = "forge", about = "Forge media server")]
+struct Cli {
+    /// Host address to bind to
+    #[arg(long, env = "FORGE_HOST")]
+    host: Option<String>,
+
+    /// Port to listen on
+    #[arg(short, long, env = "FORGE_PORT")]
+    port: Option<u16>,
+
+    /// Path to data directory
+    #[arg(long, env = "FORGE_DATA_DIR")]
+    data_dir: Option<PathBuf>,
+
+    /// Path to config file
+    #[arg(short, long, default_value = "forge.toml", env = "FORGE_CONFIG")]
+    config: PathBuf,
+
+    /// Run in development mode
+    #[arg(long)]
+    dev: bool,
+}
 
 fn modules() -> Vec<Box<dyn forge::Module>> {
     vec![Box::new(CinemaModule)]
@@ -36,8 +63,19 @@ async fn main_wrapper() -> Result<()> {
         .event_format(forge::ForgeFormatter)
         .init();
 
-    let config = Config::from_file("forge.toml")?;
-    let dev = std::env::args().any(|a| a == "--dev");
+    let cli = Cli::parse();
 
-    Platform::new(config, modules()).dev(dev).run().await
+    let mut config = Config::from_file(&cli.config)?;
+
+    if let Some(host) = cli.host {
+        config.host = host;
+    }
+    if let Some(port) = cli.port {
+        config.port = port;
+    }
+    if let Some(data_dir) = cli.data_dir {
+        config.data_dir = data_dir;
+    }
+
+    Platform::new(config, modules()).dev(cli.dev).run().await
 }

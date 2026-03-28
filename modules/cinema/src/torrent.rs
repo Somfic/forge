@@ -4,8 +4,7 @@ use std::task::{Context, Poll};
 
 use librqbit::api::TorrentIdOrHash;
 use librqbit::{
-    AddTorrent, AddTorrentOptions, AddTorrentResponse, Api, ManagedTorrent, Session,
-    SessionOptions,
+    AddTorrent, AddTorrentOptions, AddTorrentResponse, Api, ManagedTorrent, Session, SessionOptions,
 };
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncSeek, ReadBuf};
@@ -105,8 +104,8 @@ impl TorrentEngine {
         let session_cancel = cancel.clone();
 
         let opts = SessionOptions {
-            disable_dht: !config.dht_enabled,
-            listen_port_range: Some(config.torrent_listen_port..config.torrent_listen_port + 1),
+            disable_dht: !config.use_dht,
+            listen_port_range: Some(config.torrent_port..config.torrent_port + 1),
             enable_upnp_port_forwarding: true,
             fastresume: true,
             cancellation_token: Some(session_cancel),
@@ -123,7 +122,13 @@ impl TorrentEngine {
         let span = tracing::Span::current();
 
         ENGINE
-            .set(TorrentEngine { session, api, http, cancel, span })
+            .set(TorrentEngine {
+                session,
+                api,
+                http,
+                cancel,
+                span,
+            })
             .map_err(|_| forge::Error::Generic("Torrent engine already initialized".into()))?;
 
         tracing::info!("Torrent engine initialized");
@@ -143,7 +148,9 @@ impl TorrentEngine {
             match self.http.get(&url).send().await {
                 Ok(resp) if resp.status().is_success() => match resp.bytes().await {
                     Ok(bytes) if bytes.len() > 50 && bytes[0] == b'd' => {
-                        self.span.in_scope(|| tracing::info!(info_hash, url, "Fetched .torrent file from cache"));
+                        self.span.in_scope(|| {
+                            tracing::info!(info_hash, url, "Fetched .torrent file from cache")
+                        });
                         return Some(bytes);
                     }
                     _ => continue,
@@ -194,7 +201,12 @@ impl TorrentEngine {
         let add = if let Some(torrent_bytes) = self.fetch_torrent_file(info_hash).await {
             AddTorrent::from_bytes(torrent_bytes)
         } else {
-            self.span.in_scope(|| tracing::info!(info_hash, "No cached .torrent file, falling back to magnet+DHT"));
+            self.span.in_scope(|| {
+                tracing::info!(
+                    info_hash,
+                    "No cached .torrent file, falling back to magnet+DHT"
+                )
+            });
             let magnet = Self::magnet_url(info_hash);
             AddTorrent::from_url(magnet)
         };
@@ -220,9 +232,7 @@ impl TorrentEngine {
         )
         .await
         .map_err(|_| {
-            forge::Error::Generic(
-                "Timed out waiting for torrent metadata (no peers found)".into(),
-            )
+            forge::Error::Generic("Timed out waiting for torrent metadata (no peers found)".into())
         })?
         .map_err(|e| forge::Error::Generic(format!("Torrent init failed: {e}")))?;
 
@@ -231,24 +241,22 @@ impl TorrentEngine {
 
         let name = managed.name().unwrap_or_else(|| "unknown".into());
         let stats = managed.stats();
-        self.span.in_scope(|| tracing::info!(
-            name,
-            info_hash,
-            file_idx,
-            total = %format_bytes(stats.total_bytes),
-            "Torrent streaming"
-        ));
+        self.span.in_scope(|| {
+            tracing::info!(
+                name,
+                info_hash,
+                file_idx,
+                total = %format_bytes(stats.total_bytes),
+                "Torrent streaming"
+            )
+        });
 
         Ok(TorrentHandle { managed })
     }
 
     /// Get a streaming reader for a torrent file via the Api.
     /// The reader blocks on missing pieces and prioritizes sequential download.
-    pub fn stream(
-        &self,
-        info_hash: &str,
-        file_idx: usize,
-    ) -> forge::Result<TorrentFileReader> {
+    pub fn stream(&self, info_hash: &str, file_idx: usize) -> forge::Result<TorrentFileReader> {
         let id = TorrentIdOrHash::parse(info_hash)
             .map_err(|e| forge::Error::Generic(format!("Invalid info hash: {e}")))?;
 
@@ -265,11 +273,7 @@ impl TorrentEngine {
     }
 
     /// Get the on-disk file path for a torrent file.
-    pub fn file_path(
-        &self,
-        info_hash: &str,
-        file_idx: usize,
-    ) -> forge::Result<std::path::PathBuf> {
+    pub fn file_path(&self, info_hash: &str, file_idx: usize) -> forge::Result<std::path::PathBuf> {
         let id = TorrentIdOrHash::parse(info_hash)
             .map_err(|e| forge::Error::Generic(format!("Invalid info hash: {e}")))?;
 
@@ -297,10 +301,13 @@ impl TorrentEngine {
     pub async fn audio_tracks(path: &std::path::Path) -> Vec<AudioTrack> {
         let output = tokio::process::Command::new("ffprobe")
             .args([
-                "-v", "quiet",
-                "-print_format", "json",
+                "-v",
+                "quiet",
+                "-print_format",
+                "json",
                 "-show_streams",
-                "-select_streams", "a",
+                "-select_streams",
+                "a",
             ])
             .arg(path)
             .output()
@@ -343,13 +350,16 @@ impl TorrentEngine {
                 let title = tags.and_then(|t| t.title.clone());
                 let name = title.unwrap_or_else(|| {
                     let codec = s.codec_name.unwrap_or_default().to_uppercase();
-                    let ch = s.channels.map(|c| match c {
-                        1 => "Mono",
-                        2 => "Stereo",
-                        6 => "5.1",
-                        8 => "7.1",
-                        _ => "",
-                    }).unwrap_or("");
+                    let ch = s
+                        .channels
+                        .map(|c| match c {
+                            1 => "Mono",
+                            2 => "Stereo",
+                            6 => "5.1",
+                            8 => "7.1",
+                            _ => "",
+                        })
+                        .unwrap_or("");
                     format!("{codec} {ch}").trim().to_string()
                 });
                 AudioTrack {
@@ -365,11 +375,7 @@ impl TorrentEngine {
     /// Get the duration of a media file in seconds.
     pub async fn probe_duration(path: &std::path::Path) -> Option<f64> {
         let output = tokio::process::Command::new("ffprobe")
-            .args([
-                "-v", "quiet",
-                "-print_format", "json",
-                "-show_format",
-            ])
+            .args(["-v", "quiet", "-print_format", "json", "-show_format"])
             .arg(path)
             .output()
             .await
@@ -394,7 +400,8 @@ impl TorrentEngine {
 
     /// Gracefully shut down the torrent engine.
     pub async fn shutdown(&self) {
-        self.span.in_scope(|| tracing::info!("Shutting down torrent engine"));
+        self.span
+            .in_scope(|| tracing::info!("Shutting down torrent engine"));
         self.cancel.cancel();
     }
 
@@ -409,12 +416,16 @@ impl TorrentEngine {
                     if handle.is_paused() {
                         let session = self.session.clone();
                         let h = handle.clone();
-                        tokio::spawn(async move { let _ = session.unpause(&h).await; });
+                        tokio::spawn(async move {
+                            let _ = session.unpause(&h).await;
+                        });
                     }
                 } else if !handle.is_paused() {
                     let session = self.session.clone();
                     let h = handle.clone();
-                    tokio::spawn(async move { let _ = session.pause(&h).await; });
+                    tokio::spawn(async move {
+                        let _ = session.pause(&h).await;
+                    });
                 }
             }
         });
@@ -425,7 +436,8 @@ impl TorrentEngine {
         if let Ok(id) = TorrentIdOrHash::parse(info_hash) {
             let name = self.session.get(id.clone()).and_then(|h| h.name());
             let _ = self.session.delete(id, false).await;
-            self.span.in_scope(|| tracing::info!(info_hash, name, "Torrent stopped (files kept)"));
+            self.span
+                .in_scope(|| tracing::info!(info_hash, name, "Torrent stopped (files kept)"));
         }
     }
 
@@ -434,7 +446,8 @@ impl TorrentEngine {
         if let Ok(id) = TorrentIdOrHash::parse(info_hash) {
             let name = self.session.get(id.clone()).and_then(|h| h.name());
             let _ = self.session.delete(id, true).await;
-            self.span.in_scope(|| tracing::info!(info_hash, name, "Torrent stopped and files deleted"));
+            self.span
+                .in_scope(|| tracing::info!(info_hash, name, "Torrent stopped and files deleted"));
         }
     }
 }

@@ -61,7 +61,7 @@ async fn search(
     State(ctx): State<AppContext>,
     Query(params): Query<SearchParams>,
 ) -> Result<Json<Vec<SearchResult>>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let results = tmdb.search(&params.q).await?;
     Ok(Json(results))
@@ -72,7 +72,7 @@ async fn movie_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
 ) -> Result<Json<MediaItem>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Movie, id).await?;
     Ok(Json(item))
@@ -83,7 +83,7 @@ async fn tv_details(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
 ) -> Result<Json<MediaItem>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Tv, id).await?;
     Ok(Json(item))
@@ -94,7 +94,7 @@ async fn movie_streams(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<Stream>>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
 
     // Get IMDB ID from TMDB
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
@@ -114,7 +114,7 @@ async fn tv_streams(
     State(ctx): State<AppContext>,
     Path((id, season, episode)): Path<(i64, i64, i64)>,
 ) -> Result<Json<Vec<Stream>>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
 
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Tv, id).await?;
@@ -155,7 +155,7 @@ async fn movie_subtitles(
     State(ctx): State<AppContext>,
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<SubtitleTrack>>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Movie, id).await?;
     let imdb_id = item
@@ -172,7 +172,7 @@ async fn tv_subtitles(
     State(ctx): State<AppContext>,
     Path((id, season, episode)): Path<(i64, i64, i64)>,
 ) -> Result<Json<Vec<SubtitleTrack>>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let item = tmdb.details(MediaType::Tv, id).await?;
     let imdb_id = item
@@ -242,7 +242,7 @@ async fn image_proxy(
 
 #[utoipa::path(get, path = "/trending", responses((status = 200, body = Vec<SearchResult>)))]
 async fn trending(State(ctx): State<AppContext>) -> Result<Json<Vec<SearchResult>>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let results = tmdb.trending().await?;
     Ok(Json(results))
@@ -253,7 +253,7 @@ async fn similar(
     State(ctx): State<AppContext>,
     Path((media_type, id)): Path<(String, i64)>,
 ) -> Result<Json<Vec<SearchResult>>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let mt = match media_type.as_str() {
         "movie" => MediaType::Movie,
@@ -474,7 +474,7 @@ async fn enqueue_download(
         (hash.clone(), idx)
     } else {
         // Auto-select best stream at requested resolution
-        let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+        let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
         let tmdb = TmdbClient::new(&config, ctx.http.clone());
         let mt = match body.media_type.as_str() {
             "movie" => MediaType::Movie,
@@ -598,7 +598,7 @@ async fn estimate_download(
     State(ctx): State<AppContext>,
     Path((media_type, tmdb_id)): Path<(String, i64)>,
 ) -> Result<Json<Vec<ResolutionEstimate>>, AppError> {
-    let config = ctx.config.module_config::<CinemaConfig>("cinema")?;
+    let config = ctx.config.module_config_env::<CinemaConfig>("cinema")?;
     let tmdb = TmdbClient::new(&config, ctx.http.clone());
     let mt = match media_type.as_str() {
         "movie" => MediaType::Movie,

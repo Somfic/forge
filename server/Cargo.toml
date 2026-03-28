@@ -3,6 +3,10 @@ name = "forge_server"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "forge"
+path = "src/main.rs"
+
 [dependencies]
 forge = { path = "../core" }
 cinema = { path = "../modules/cinema" }
@@ -10,3 +14,4 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 libc = "0.2"
+clap = { version = "4", features = ["derive", "env"] }

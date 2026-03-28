@@ -13,7 +13,12 @@
 		stream_index: number;
 		name: string;
 		language: string | null;
+		codec: string;
 	}
+
+	const BROWSER_SAFE_AUDIO = new Set([
+		"aac", "mp3", "opus", "vorbis", "flac",
+	]);
 
 	let item = $state<MediaItem | null>(null);
 	let streamUrl = $state<string | null>(null);
@@ -25,7 +30,7 @@
 	let fileAudioTracks = $state<AudioTrackInfo[]>([]);
 	let activeAudioIdx = $state(0);
 	let mediaDuration = $state(0);
-	let remuxTimeOffset = $state(0);
+	let hlsSessionId = $state<string | null>(null);
 
 	const backdropUrls = $derived(
 		item?.backdrops?.map((b) => imageUrl(b, 'original')) ?? []
@@ -66,7 +71,6 @@
 			.then(async (result) => {
 				streamUrl = result.url;
 				activeAudioIdx = 0;
-				remuxTimeOffset = 0;
 				pollAudioTracks(infoHash as string, fileIdx as number);
 			})
 			.catch((e) => { error = e.message; });
@@ -126,9 +130,13 @@
 				const res = await fetch(`/cinema/api/stream/${hash}/${idx}/audio`);
 				const data = await res.json();
 				const tracks: AudioTrackInfo[] = data.tracks ?? [];
-				if (tracks.length > 1) {
-					fileAudioTracks = tracks;
+				if (tracks.length > 0) {
+					if (tracks.length > 1) fileAudioTracks = tracks;
 					if (data.duration) mediaDuration = data.duration;
+					if (!hlsSessionId && tracks[0] && !BROWSER_SAFE_AUDIO.has(tracks[0].codec)) {
+						fileAudioTracks = tracks;
+						startHlsRemux(hash, idx, 0);
+					}
 					clearInterval(audioPollTimer);
 					audioPollTimer = undefined;
 				}
@@ -139,20 +147,39 @@
 		audioPollTimer = setInterval(check, 10_000);
 	}
 
-	function switchAudio(idx: number) {
+	let playerTime = $state(0);
+
+	async function switchAudio(idx: number) {
 		activeAudioIdx = idx;
-		remuxTimeOffset = 0;
-		streamUrl = `/cinema/api/stream/${infoHash}/${fileIdx}/remux?audio=${idx}`;
+		await startHlsRemux(infoHash as string, fileIdx as number, idx, playerTime);
 	}
 
-	function seekRemux(time: number) {
-		remuxTimeOffset = time;
-		streamUrl = `/cinema/api/stream/${infoHash}/${fileIdx}/remux?audio=${activeAudioIdx}&t=${time.toFixed(1)}`;
+	async function startHlsRemux(hash: string, idx: number, audioIdx: number, startAt = 0) {
+		stopHlsSession();
+		streamUrl = null;
+		try {
+			const t = startAt > 0 ? `&t=${startAt.toFixed(1)}` : "";
+			const res = await fetch(
+				`/cinema/api/stream/${hash}/${idx}/remux?audio=${audioIdx}${t}`,
+				{ method: "POST" },
+			);
+			const data = await res.json();
+			hlsSessionId = data.session_id;
+			streamUrl = data.playlist_url;
+		} catch (e: any) {
+			error = e.message;
+		}
 	}
 
-	const isRemux = $derived(streamUrl?.includes('/remux') ?? false);
+	function stopHlsSession() {
+		if (hlsSessionId) {
+			fetch(`/cinema/api/hls/${hlsSessionId}`, { method: "DELETE" }).catch(() => {});
+			hlsSessionId = null;
+		}
+	}
 
 	function close() {
+		stopHlsSession();
 		goto(`/cinema/${mediaType}/${mediaId}`);
 	}
 </script>
@@ -178,9 +205,7 @@
 			}))}
 			activeAudioTrack={activeAudioIdx}
 			onAudioSelect={(track) => switchAudio(track.id)}
-			onSeek={isRemux ? seekRemux : undefined}
-			knownDuration={isRemux ? mediaDuration : 0}
-			timeOffset={isRemux ? remuxTimeOffset : 0}
+			knownDuration={hlsSessionId ? mediaDuration : 0}
 
 			{subtitleTracks}
 			{loadingSubtitles}
@@ -188,6 +213,7 @@
 			onClose={close}
 			onSubtitleSelect={selectSubtitleTrack}
 			onSubtitleOff={disableSubtitles}
+			bind:currentTime={playerTime}
 			autoplay
 		/>
 	{:else}

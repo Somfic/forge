@@ -46,13 +46,11 @@
 		onSubtitleOff,
 		onStreamSelect,
 		onAudioSelect,
-		onSeek,
 		loadingSubtitles = false,
 		activeTrackUrl,
 		accent,
 		backdrop,
 		knownDuration = 0,
-		timeOffset = 0,
 		startTime = 0,
 		streamStats = null,
 		currentTime = $bindable(0),
@@ -75,13 +73,11 @@
 		onSubtitleOff?: () => void;
 		onStreamSelect?: (stream: StreamOption) => void;
 		onAudioSelect?: (track: AudioTrack) => void;
-		onSeek?: (time: number) => void;
 		loadingSubtitles?: boolean;
 		activeTrackUrl?: string;
 		accent?: string;
 		backdrop?: string;
 		knownDuration?: number;
-		timeOffset?: number;
 		startTime?: number;
 		currentTime?: number;
 		duration?: number;
@@ -242,10 +238,7 @@
 	}
 
 	function seekTo(time: number) {
-		if (onSeek) {
-			currentTime = time;
-			onSeek(time);
-		} else if (videoEl) {
+		if (videoEl) {
 			videoEl.currentTime = time;
 		}
 	}
@@ -383,6 +376,7 @@
 	function initVideo() {
 		if (!videoEl || !src) return;
 		loading = true;
+		streamError = null;
 
 		if (hls) {
 			hls.destroy();
@@ -422,9 +416,9 @@
 
 	function handleTimeUpdate() {
 		if (!videoEl || seeking) return;
-		currentTime = videoEl.currentTime + timeOffset;
+		currentTime = videoEl.currentTime;
 		if (videoEl.buffered.length > 0) {
-			buffered = videoEl.buffered.end(videoEl.buffered.length - 1) + timeOffset;
+			buffered = videoEl.buffered.end(videoEl.buffered.length - 1);
 		}
 	}
 
@@ -435,6 +429,11 @@
 	$effect(() => {
 		if (videoEl && src) {
 			initVideo();
+		} else if (videoEl && !src) {
+			// No source yet (e.g. switching streams) — show loading state
+			loading = true;
+			videoEl.removeAttribute("src");
+			videoEl.load();
 		}
 	});
 
@@ -515,38 +514,13 @@
 				}
 			}
 		}}
-		oncanplay={() => (loading = false)}
+		oncanplay={() => { loading = false; streamError = null; }}
 		onwaiting={() => (loading = true)}
 		onerror={() => {
 			streamError = "Stream failed. The torrent may not have enough peers.";
-			loading = false;
+			loading = true;
 		}}
 	></video>
-
-	{#if streamError}
-		<div class="error-overlay">
-			<span class="error-message">{streamError}</span>
-			<div class="error-actions">
-				<Button
-					variant="ghost"
-					label="Retry"
-					icon="RotateCw"
-					onclick={() => {
-						streamError = null;
-						initVideo();
-					}}
-				/>
-				{#if onClose}
-					<Button
-						variant="ghost"
-						label="Go back"
-						icon="ArrowLeft"
-						onclick={onClose}
-					/>
-				{/if}
-			</div>
-		</div>
-	{/if}
 
 	<!-- Gradient overlay when paused but backdrop not yet showing -->
 	<GradientOverlay visible={paused || loading} />
@@ -565,12 +539,9 @@
 
 	<div class="loading-spinner" class:visible={loading}>
 		<Spinner />
-		{#if streamStats && !streamStats.finished}
+		{#if streamError}
 			<div class="loading-progress">
-				<span class="loading-percent">{torrentPercent}%</span>
-				<span class="loading-detail">
-					{streamStats.download_speed_mbps.toFixed(1)} MB/s · {streamStats.peers} {streamStats.peers === 1 ? 'peer' : 'peers'}
-				</span>
+				<span class="loading-detail">{streamError}</span>
 			</div>
 		{/if}
 	</div>
@@ -849,29 +820,6 @@
 		cursor: pointer;
 	}
 
-	/* ── Error overlay ── */
-	.error-overlay {
-		position: absolute;
-		inset: 0;
-		z-index: 10;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 1rem;
-		background: rgba(0, 0, 0, 0.85);
-	}
-
-	.error-message {
-		color: rgba(255, 255, 255, 0.8);
-		font-size: 0.9rem;
-	}
-
-	.error-actions {
-		display: flex;
-		gap: 0.5rem;
-	}
-
 	/* ── Title overlay (single element, always mounted) ── */
 	.title-overlay {
 		position: absolute;
@@ -929,12 +877,6 @@
 		margin-top: 12px;
 	}
 
-	.loading-percent {
-		font-family: "JetBrains Mono", monospace;
-		font-size: 0.9rem;
-		font-weight: 500;
-		color: rgba(255, 255, 255, 0.8);
-	}
 
 	.loading-detail {
 		font-family: "JetBrains Mono", monospace;

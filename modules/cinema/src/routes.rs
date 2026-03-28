@@ -45,7 +45,9 @@ pub fn router() -> OpenApiRouter<AppContext> {
         .route("/stream/{info_hash}/{file_idx}", axum::routing::get(stream_file))
         .route("/stream/{info_hash}/{file_idx}/audio", axum::routing::get(stream_audio_tracks))
         .route("/stream/{info_hash}/{file_idx}/subtitles/{stream_index}", axum::routing::get(stream_embedded_subtitles))
-        .route("/stream/{info_hash}/{file_idx}/remux", axum::routing::get(stream_remux))
+        .route("/stream/{info_hash}/{file_idx}/remux", axum::routing::post(stream_remux_hls))
+        .route("/hls/{session_id}/{file}", axum::routing::get(hls_serve))
+        .route("/hls/{session_id}", axum::routing::delete(hls_stop))
         .route("/image/{*path}", axum::routing::get(image_proxy))
         .route("/files/{*path}", axum::routing::get(serve_file))
 }
@@ -749,48 +751,68 @@ struct RemuxParams {
     t: f64,
 }
 
-async fn stream_remux(
+#[derive(Serialize, ToSchema)]
+struct RemuxResponse {
+    session_id: String,
+    playlist_url: String,
+}
+
+async fn stream_remux_hls(
+    State(ctx): State<AppContext>,
     Path((info_hash, file_idx)): Path<(String, usize)>,
     Query(params): Query<RemuxParams>,
-) -> Result<axum::response::Response, AppError> {
+) -> Result<Json<RemuxResponse>, AppError> {
     let engine = TorrentEngine::get();
     engine.start(&info_hash, file_idx).await?;
     let path = engine.file_path(&info_hash, file_idx)?;
 
-    let mut args = Vec::new();
-    if params.t > 0.0 {
-        args.extend_from_slice(&["-ss".to_string(), format!("{:.3}", params.t)]);
+    let (session_id, playlist_url) =
+        crate::hls::start_session(&ctx.storage, &path, params.audio, params.t).await?;
+
+    Ok(Json(RemuxResponse {
+        session_id,
+        playlist_url,
+    }))
+}
+
+async fn hls_serve(
+    Path((session_id, file)): Path<(String, String)>,
+) -> Result<axum::response::Response, AppError> {
+    // Validate: no path traversal
+    if file.contains("..") || file.contains('/') {
+        return Err(forge::Error::Generic("Invalid path".into()).into());
     }
-    args.extend_from_slice(&[
-        "-i".into(), path.to_str().unwrap_or("").into(),
-        "-map".into(), "0:v:0".into(),
-        "-map".into(), format!("0:a:{}", params.audio),
-        "-c".into(), "copy".into(),
-        "-f".into(), "mp4".into(),
-        "-movflags".into(), "frag_keyframe+empty_moov+default_base_moof".into(),
-        "pipe:1".into(),
-    ]);
 
-    let mut child = tokio::process::Command::new("ffmpeg")
-        .args(&args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| forge::Error::Generic(format!("Failed to start ffmpeg: {e}")))?;
+    let dir = crate::hls::session_dir(&session_id)
+        .await
+        .ok_or_else(|| forge::Error::Generic("HLS session not found".into()))?;
 
-    let stdout = child.stdout.take()
-        .ok_or_else(|| forge::Error::Generic("No ffmpeg stdout".into()))?;
+    crate::hls::touch(&session_id).await;
 
-    let stream = tokio_util::io::ReaderStream::new(stdout);
-    let body = axum::body::Body::from_stream(stream);
+    let full_path = dir.join(&file);
+    let bytes = tokio::fs::read(&full_path)
+        .await
+        .map_err(|_| forge::Error::Generic(format!("HLS file not found: {file}")))?;
+
+    let (content_type, cache) = if file.ends_with(".m3u8") {
+        ("application/vnd.apple.mpegurl", "no-cache")
+    } else {
+        ("video/mp2t", "public, max-age=3600")
+    };
 
     Ok(axum::http::Response::builder()
         .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "video/mp4")
-        .header(header::CACHE_CONTROL, "no-cache")
-        .body(body)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, cache)
+        .body(axum::body::Body::from(bytes))
         .unwrap())
+}
+
+async fn hls_stop(
+    Path(session_id): Path<String>,
+) -> StatusCode {
+    crate::hls::stop_session(&session_id).await;
+    StatusCode::NO_CONTENT
 }
 
 async fn serve_file(

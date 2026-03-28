@@ -34,6 +34,7 @@ pub struct AudioTrack {
     pub stream_index: usize,
     pub name: String,
     pub language: Option<String>,
+    pub codec: String,
 }
 
 #[derive(serde::Serialize, Clone, utoipa::ToSchema)]
@@ -385,8 +386,9 @@ impl TorrentEngine {
                 let tags = s.tags.as_ref();
                 let lang = tags.and_then(|t| t.language.clone());
                 let title = tags.and_then(|t| t.title.clone());
+                let codec = s.codec_name.unwrap_or_default();
                 let name = title.unwrap_or_else(|| {
-                    let codec = s.codec_name.unwrap_or_default().to_uppercase();
+                    let codec_upper = codec.to_uppercase();
                     let ch = s
                         .channels
                         .map(|c| match c {
@@ -397,13 +399,14 @@ impl TorrentEngine {
                             _ => "",
                         })
                         .unwrap_or("");
-                    format!("{codec} {ch}").trim().to_string()
+                    format!("{codec_upper} {ch}").trim().to_string()
                 });
                 AudioTrack {
                     index: s.index,
                     stream_index: i,
                     name,
                     language: lang,
+                    codec: codec.to_lowercase(),
                 }
             })
             .collect()

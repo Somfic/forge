@@ -5,6 +5,7 @@ use utoipa_axum::router::OpenApiRouter;
 
 mod config;
 pub(crate) mod downloads;
+mod hls;
 mod routes;
 mod streams;
 mod subtitles;
@@ -58,10 +59,20 @@ impl Module for CinemaModule {
         let span = tracing::Span::current();
         let manager = downloads::DownloadManager::new(ctx.clone(), config);
         tokio::spawn(manager.run().instrument(span));
+
+        // HLS session cleanup reaper — every 60s, remove sessions idle for 2+ minutes
+        tokio::spawn(async {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                hls::cleanup_idle(120).await;
+            }
+        });
+
         Ok(())
     }
 
     async fn on_stop(&self) {
+        hls::stop_all().await;
         torrent::TorrentEngine::get().shutdown().await;
     }
 

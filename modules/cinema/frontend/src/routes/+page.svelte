@@ -44,11 +44,11 @@
 				watchedItems = res.data;
 			})
 			.catch(() => {});
-		fetchTrending()
-			.then((res) => {
-				trendingItems = res.data;
-			})
-			.catch(() => {});
+		// fetchTrending()
+		// 	.then((res) => {
+		// 		trendingItems = res.data;
+		// 	})
+		// 	.catch(() => {});
 	});
 
 	const browsing = $derived(query.length < 2 && results.length === 0);
@@ -133,7 +133,9 @@
 								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
 						>
 							{#snippet bottomLeft()}
-								<Text size="xs" variant="muted">{item.title}</Text>
+								<Text size="xs" variant="muted"
+									>{item.title}</Text
+								>
 							{/snippet}
 						</MediaCard>
 					{/each}
@@ -155,7 +157,9 @@
 								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
 						>
 							{#snippet bottomLeft()}
-								<Text size="xs" variant="muted">{item.title}</Text>
+								<Text size="xs" variant="muted"
+									>{item.title}</Text
+								>
 							{/snippet}
 						</MediaCard>
 					{/each}
@@ -177,7 +181,9 @@
 								(window.location.href = `/cinema/${item.media_type}/${item.id}`)}
 						>
 							{#snippet bottomLeft()}
-								<Text size="xs" variant="muted">{item.title}</Text>
+								<Text size="xs" variant="muted"
+									>{item.title}</Text
+								>
 							{/snippet}
 							{#snippet bottomRight()}
 								<Text size="xs" variant="muted">
@@ -208,7 +214,9 @@
 								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
 						>
 							{#snippet bottomLeft()}
-								<Text size="xs" variant="muted">{item.title}</Text>
+								<Text size="xs" variant="muted"
+									>{item.title}</Text
+								>
 							{/snippet}
 						</MediaCard>
 					{/each}

@@ -83,9 +83,9 @@ where
                     if let Some(val) = raw.strip_prefix("module=") {
                         let val = val.trim_matches('"');
                         if ansi {
-                            let bg = module_color(val);
-                            let style = Style::new().on(bg).bold();
-                            write!(writer, "{} ", style.paint(format!(" {} ", val)))?;
+                            let color = module_color(val);
+                            let style = Style::new().fg(color).bold();
+                            write!(writer, "{} ", style.paint(val))?;
                         } else {
                             write!(writer, "{}: ", val)?;
                         }

@@ -132,7 +132,7 @@ jobs:
           VERSION="${{ steps.semver.outputs.version }}"
           DRAFT_TAG="v${VERSION}-draft"
 
-          git tag "$DRAFT_TAG"
+          git tag -f "$DRAFT_TAG"
           git push origin "$DRAFT_TAG"
 
           gh release create "$DRAFT_TAG" \

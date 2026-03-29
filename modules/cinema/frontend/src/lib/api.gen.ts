@@ -234,16 +234,6 @@ export interface SubtitleTrack {
   url: string;
 }
 
-export interface EmbeddedSubtitleTrack {
-  /** ffmpeg absolute stream index */
-  index: number;
-  /** subtitle-only index (0, 1, 2...) */
-  stream_index: number;
-  language: string | null;
-  name: string;
-  codec: string;
-}
-
 export interface WatchHistoryItem {
   duration: number;
   episode: number;
@@ -794,10 +784,6 @@ export const startStream = async (infoHash: string,
 )
 
   const body = [204, 205, 304].includes(res.status) ? null : await res.text();
-
-  if (!res.ok) {
-    throw new Error(body || `Request failed with status ${res.status}`);
-  }
 
   const data: startStreamResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as startStreamResponse

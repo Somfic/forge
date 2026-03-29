@@ -9,6 +9,7 @@
 		type CollectionItem,
 	} from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
+	import { goto } from "$app/navigation";
 	import { Heading, Input, MediaCard, Text } from "glow";
 
 	let query = $state("");
@@ -108,7 +109,7 @@
 							aspectRatio="2/3"
 							progress={pct}
 							onclick={() =>
-								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
+								(goto(`/cinema/${item.media_type}/${item.tmdb_id}`))}
 						>
 							{#snippet bottomLeft()}
 								<Text size="xs" variant="muted">
@@ -134,7 +135,7 @@
 								: ""}
 							aspectRatio="2/3"
 							onclick={() =>
-								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
+								(goto(`/cinema/${item.media_type}/${item.tmdb_id}`))}
 						>
 							{#snippet bottomLeft()}
 								<Text size="xs" variant="muted"
@@ -158,7 +159,7 @@
 								: ""}
 							aspectRatio="2/3"
 							onclick={() =>
-								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
+								(goto(`/cinema/${item.media_type}/${item.tmdb_id}`))}
 						>
 							{#snippet bottomLeft()}
 								<Text size="xs" variant="muted"
@@ -182,7 +183,7 @@
 								: ""}
 							aspectRatio="2/3"
 							onclick={() =>
-								(window.location.href = `/cinema/${item.media_type}/${item.id}`)}
+								(goto(`/cinema/${item.media_type}/${item.id}`))}
 						>
 							{#snippet bottomLeft()}
 								<Text size="xs" variant="muted"
@@ -215,7 +216,7 @@
 								: ""}
 							aspectRatio="2/3"
 							onclick={() =>
-								(window.location.href = `/cinema/${item.media_type}/${item.tmdb_id}`)}
+								(goto(`/cinema/${item.media_type}/${item.tmdb_id}`))}
 						>
 							{#snippet bottomLeft()}
 								<Text size="xs" variant="muted"
@@ -236,7 +237,7 @@
 						: ""}
 					aspectRatio="2/3"
 					onclick={() =>
-						(window.location.href = `/cinema/${item.media_type}/${item.id}`)}
+						(goto(`/cinema/${item.media_type}/${item.id}`))}
 				>
 					{#snippet bottomLeft()}
 						<Text size="xs" variant="muted">{item.title}</Text>

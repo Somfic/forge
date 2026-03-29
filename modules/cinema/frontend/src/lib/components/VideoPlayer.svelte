@@ -56,6 +56,9 @@
 		currentTime = $bindable(0),
 		duration = $bindable(0),
 		paused = $bindable(true),
+		onUserPlay,
+		onUserPause,
+		onUserSeek,
 	}: {
 		src: string;
 		subtitles?: SubtitleCue[];
@@ -83,6 +86,9 @@
 		duration?: number;
 		streamStats?: { progress_bytes: number; total_bytes: number; download_speed_mbps: number; peers: number; finished: boolean } | null;
 		paused?: boolean;
+		onUserPlay?: () => void;
+		onUserPause?: () => void;
+		onUserSeek?: (time: number) => void;
 	} = $props();
 
 	let containerEl = $state<HTMLDivElement | undefined>(undefined);
@@ -232,14 +238,17 @@
 		if (!videoEl) return;
 		if (videoEl.paused) {
 			videoEl.play().catch(() => {});
+			onUserPlay?.();
 		} else {
 			videoEl.pause();
+			onUserPause?.();
 		}
 	}
 
 	function seekTo(time: number) {
 		if (videoEl) {
 			videoEl.currentTime = time;
+			onUserSeek?.(time);
 		}
 	}
 
@@ -437,6 +446,33 @@
 		}
 	});
 
+	// Sync bindings to video element (for external control, e.g. watch party)
+	// Use a flag to prevent the DOM event handlers from echoing back
+	let programmaticChange = false;
+
+	$effect(() => {
+		if (!videoEl || loading || duration === 0) return;
+		if (paused && !videoEl.paused) {
+			console.log('[VP:effect] paused binding=true, videoEl.paused=false → calling videoEl.pause()');
+			programmaticChange = true;
+			videoEl.pause();
+		} else if (!paused && videoEl.paused) {
+			console.log('[VP:effect] paused binding=false, videoEl.paused=true → calling videoEl.play()');
+			programmaticChange = true;
+			videoEl.play().catch(() => {}).finally(() => { programmaticChange = false; });
+			return;
+		}
+		programmaticChange = false;
+	});
+
+	$effect(() => {
+		if (!videoEl || duration === 0) return;
+		const drift = Math.abs(currentTime - videoEl.currentTime);
+		if (drift > 0.5) {
+			videoEl.currentTime = currentTime;
+		}
+	});
+
 	$effect(() => {
 		clearTimeout(pauseIdleTimeout);
 		if (paused && !loading && duration > 0) {
@@ -497,11 +533,13 @@
 		}}
 		ontimeupdate={handleTimeUpdate}
 		onplay={() => {
-			paused = false;
+			console.log('[VP:dom] onplay event, programmatic:', programmaticChange, 'paused binding:', paused);
+			if (!programmaticChange) paused = false;
 			showControls();
 		}}
 		onpause={() => {
-			paused = true;
+			console.log('[VP:dom] onpause event, programmatic:', programmaticChange, 'paused binding:', paused);
+			if (!programmaticChange) paused = true;
 			controlsVisible = true;
 		}}
 		onloadedmetadata={() => {

@@ -11,6 +11,7 @@ mod streams;
 mod subtitles;
 mod tmdb;
 pub(crate) mod torrent;
+pub(crate) mod watch_party;
 
 pub struct CinemaModule;
 
@@ -30,6 +31,11 @@ mod tests {
         let json = forge::json::to_string_pretty(&spec).unwrap();
         std::fs::write("frontend/openapi.json", &json).unwrap();
         println!("Wrote OpenAPI spec to frontend/openapi.json");
+    }
+
+    #[test]
+    fn export_ws_schemas() {
+        watch_party::export_ws_schemas();
     }
 }
 

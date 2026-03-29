@@ -3,7 +3,9 @@ resolver = "3"
 members = ["core", "server", "modules/*"]
 
 [workspace.dependencies]
-axum = "0.8.8"
+axum = { version = "0.8.8", features = ["ws"] }
+schemars = "0.8"
+rand = "0.8"
 async-trait = "0.1.89"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }
 serde = { version = "1.0.228", features = ["derive"] }

@@ -11,6 +11,8 @@
 		isInCollection,
 	} from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
+	import { goto } from "$app/navigation";
+	import { createRoom, party } from "$lib/watch-party.svelte";
 	import { Button, Icon, MediaCard, Pill, Text } from "glow";
 	import PlayCard from "./PlayCard.svelte";
 	import DownloadButton from "./DownloadButton.svelte";
@@ -86,6 +88,33 @@
 			setLoading(false);
 		}
 	}
+
+	let partyCopied = $state(false);
+	let waitingForCode = $state(false);
+
+	function startParty() {
+		if (party.active && party.roomCode) {
+			// Already in a party — just copy the link
+			const url = `${window.location.origin}/cinema/party/${party.roomCode}`;
+			navigator.clipboard.writeText(url);
+			partyCopied = true;
+			setTimeout(() => { partyCopied = false; }, 2000);
+			return;
+		}
+		waitingForCode = true;
+		createRoom();
+	}
+
+	// Copy link once room code arrives
+	$effect(() => {
+		if (waitingForCode && party.roomCode) {
+			waitingForCode = false;
+			const url = `${window.location.origin}/cinema/party/${party.roomCode}`;
+			navigator.clipboard.writeText(url);
+			partyCopied = true;
+			setTimeout(() => { partyCopied = false; }, 2000);
+		}
+	});
 
 	// ── Derived PlayCard props ──
 	const movieBackdrop = $derived(
@@ -207,6 +236,13 @@
 		</div>
 		<Button
 			variant="ghost"
+			icon="Link"
+			tooltip={partyCopied ? "Link copied!" : "Watch party"}
+			loading={waitingForCode}
+			onclick={startParty}
+		/>
+		<Button
+			variant="ghost"
 			icon="Heart"
 			tooltip={isFavorite ? "Remove from favorites" : "Add to favorites"}
 			iconFilled={isFavorite}
@@ -287,7 +323,7 @@
 							: ""}
 						aspectRatio="2/3"
 						onclick={() =>
-							(window.location.href = `/cinema/${sim.media_type}/${sim.id}`)}
+							goto(`/cinema/${sim.media_type}/${sim.id}`)}
 					>
 						{#snippet bottomLeft()}
 							<Text size="xs" variant="on-image">{sim.title}</Text>
@@ -302,8 +338,8 @@
 <style>
 	.sidebar {
 		width: 40vw;
-		min-height: 100vh;
-		min-height: 100dvh;
+		min-height: calc(100vh - var(--party-bar-height));
+		min-height: calc(100dvh - var(--party-bar-height));
 		padding: 2rem;
 		display: flex;
 		flex-direction: column;

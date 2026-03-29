@@ -1,0 +1,303 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ServerMsg",
+  "oneOf": [
+    {
+      "description": "Sent to host on room creation",
+      "type": "object",
+      "required": [
+        "code",
+        "type"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "room_created"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Sent to the connecting participant with their assigned ID and role",
+      "type": "object",
+      "required": [
+        "id",
+        "role",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "role": {
+          "$ref": "#/definitions/Role"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "welcome"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Broadcast when someone joins",
+      "type": "object",
+      "required": [
+        "count",
+        "id",
+        "type"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "participant_joined"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Broadcast when someone leaves",
+      "type": "object",
+      "required": [
+        "count",
+        "id",
+        "type"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "id": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "participant_left"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Room is closing (host left)",
+      "type": "object",
+      "required": [
+        "reason",
+        "type"
+      ],
+      "properties": {
+        "reason": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "room_closed"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Host has set the content",
+      "type": "object",
+      "required": [
+        "file_idx",
+        "info_hash",
+        "media_type",
+        "title",
+        "tmdb_id",
+        "type"
+      ],
+      "properties": {
+        "episode": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "file_idx": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "info_hash": {
+          "type": "string"
+        },
+        "media_type": {
+          "type": "string"
+        },
+        "poster_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "season": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "title": {
+          "type": "string"
+        },
+        "tmdb_id": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "content_set"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Host navigated — guests should follow",
+      "type": "object",
+      "required": [
+        "type",
+        "url"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "navigate_sync"
+          ]
+        },
+        "url": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "description": "Current ready state",
+      "type": "object",
+      "required": [
+        "ready",
+        "total",
+        "type"
+      ],
+      "properties": {
+        "ready": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          }
+        },
+        "total": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "ready_state"
+          ]
+        }
+      }
+    },
+    {
+      "description": "Playback sync",
+      "type": "object",
+      "required": [
+        "playing",
+        "position",
+        "server_time",
+        "type"
+      ],
+      "properties": {
+        "playing": {
+          "type": "boolean"
+        },
+        "position": {
+          "type": "number",
+          "format": "double"
+        },
+        "server_time": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "sync"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "pong"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "message",
+        "type"
+      ],
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "error"
+          ]
+        }
+      }
+    }
+  ],
+  "definitions": {
+    "Role": {
+      "type": "string",
+      "enum": [
+        "host",
+        "guest"
+      ]
+    }
+  }
+}

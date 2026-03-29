@@ -32,6 +32,8 @@ pub use platform::*;
 mod proxy;
 pub use proxy::*;
 
+pub mod ws;
+
 mod logging;
 pub use logging::*;
 

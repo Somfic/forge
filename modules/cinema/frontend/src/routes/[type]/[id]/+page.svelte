@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from "$app/state";
-	import { replaceState } from "$app/navigation";
+	import { goto, replaceState } from "$app/navigation";
 	import { onDestroy } from "svelte";
 	import { fade } from "svelte/transition";
 	import {
@@ -22,7 +22,11 @@
 		type WatchHistoryItem,
 	} from "$lib/api.gen";
 	import { getDetails, imageUrl, playStream } from "$lib/utils";
+	import { party, setContent as partySetContent, navigate as partyNavigate } from "$lib/watch-party.svelte";
 	import { Banner, Button, Spinner, Text } from "glow";
+
+	const inPartyPicking = $derived(party.active && party.phase === 'picking');
+	const isGuest = $derived(party.active && party.role === 'guest');
 	import CyclingBackdrop from "$lib/components/CyclingBackdrop.svelte";
 	import VideoPlayer from "$lib/components/VideoPlayer.svelte";
 	import MediaInfo from "$lib/components/MediaInfo.svelte";
@@ -248,6 +252,7 @@
 			u.searchParams.set("e", String(selectedEpisode));
 		else u.searchParams.delete("e");
 		replaceState(u, {});
+		partyNavigate(u.pathname + u.search);
 	}
 
 	// ── Stream loading ──
@@ -325,6 +330,21 @@
 	// ── Player ──
 	async function play(stream: Stream, fromResume = false) {
 		if (!item) return;
+
+		// Watch party: send content pick instead of playing
+		if (inPartyPicking) {
+			partySetContent({
+				media_type: item.media_type,
+				tmdb_id: item.id,
+				title: item.title,
+				poster_path: item.poster_path ?? undefined,
+				info_hash: stream.info_hash,
+				file_idx: stream.file_idx,
+				season: selectedSeason ?? undefined,
+				episode: selectedEpisode ?? undefined,
+			});
+			return;
+		}
 		if (!fromResume) playerStartTime = 0;
 		selectedStream = stream;
 		streamUrl = null;
@@ -610,7 +630,7 @@
 			<Button
 				variant="ghost"
 				icon="ArrowLeft"
-				onclick={() => window.history.back()}
+				onclick={() => goto("/cinema")}
 			/>
 		</div>
 	{/if}
@@ -627,11 +647,11 @@
 				{item}
 				{loadingStreams}
 				{similarItems}
-				{resumeEntry}
-				onwatch={loadAndPlayMovieStreams}
-				onresume={resume}
-				onselectseason={selectSeason}
-				onselectepisode={selectEpisode}
+				resumeEntry={isGuest ? null : resumeEntry}
+				onwatch={isGuest ? undefined : loadAndPlayMovieStreams}
+				onresume={isGuest ? undefined : resume}
+				onselectseason={isGuest ? undefined : selectSeason}
+				onselectepisode={isGuest ? undefined : selectEpisode}
 			/>
 		</div>
 
@@ -729,7 +749,7 @@
 	/* ── Back button ── */
 	.back-button {
 		position: fixed;
-		top: 1rem;
+		top: calc(var(--party-bar-height) + 1rem);
 		left: 1rem;
 		z-index: 5;
 	}
@@ -809,7 +829,7 @@
 		z-index: 1;
 		display: flex;
 		width: 300vw;
-		height: 100vh;
+		height: calc(100vh - var(--party-bar-height));
 		overflow: hidden;
 		transition:
 			transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
@@ -823,7 +843,7 @@
 
 	.page {
 		width: 100vw;
-		height: 100vh;
+		height: calc(100vh - var(--party-bar-height));
 		flex-shrink: 0;
 		overflow-y: auto;
 	}

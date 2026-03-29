@@ -3,9 +3,11 @@
 	import { goto } from "$app/navigation";
 	import {
 		movieSubtitles, tvSubtitles, subtitleCues,
-		type MediaItem, type MediaType, type SubtitleTrack, type SubtitleCue
+		movieStreams, tvStreams,
+		type MediaItem, type MediaType, type Stream, type SubtitleTrack, type SubtitleCue
 	} from "$lib/api.gen";
 	import { getDetails, imageUrl, playStream } from "$lib/utils";
+	import { party, sendLoaded, sendPlay, sendPause, sendSeek } from "$lib/watch-party.svelte";
 	import VideoPlayer from "$lib/components/VideoPlayer.svelte";
 
 	interface AudioTrackInfo {
@@ -31,6 +33,7 @@
 	let activeAudioIdx = $state(0);
 	let mediaDuration = $state(0);
 	let hlsSessionId = $state<string | null>(null);
+	let streams = $state<Stream[]>([]);
 
 	const backdropUrls = $derived(
 		item?.backdrops?.map((b) => imageUrl(b, 'original')) ?? []
@@ -72,6 +75,9 @@
 				streamUrl = result.url;
 				activeAudioIdx = 0;
 				pollAudioTracks(infoHash as string, fileIdx as number);
+				if (party.phase === 'watching') {
+					sendLoaded();
+				}
 			})
 			.catch((e) => { error = e.message; });
 
@@ -148,6 +154,36 @@
 	}
 
 	let playerTime = $state(0);
+	let playerPaused = $state(true);
+
+	// Watch party sync: apply incoming sync state (once per message, not reactively)
+	let lastSyncId = 0;
+	$effect(() => {
+		const sync = party.sync;
+		if (!sync || party.phase !== 'watching') return;
+
+		// Dedupe: only act when sync actually changes (new server_time)
+		if (sync.serverTime === lastSyncId) return;
+		lastSyncId = sync.serverTime;
+
+		console.log('[WP:sync-in]', { playing: sync.playing, position: sync.position.toFixed(1), paused: playerPaused });
+		playerPaused = !sync.playing;
+		playerTime = sync.position;
+	});
+
+	// Watch party sync: send user-initiated actions via VideoPlayer callbacks
+	function onUserPlay() {
+		console.log('[WP:user] play', playerTime.toFixed(1));
+		if (party.phase === 'watching') sendPlay(playerTime);
+	}
+	function onUserPause() {
+		console.log('[WP:user] pause', playerTime.toFixed(1));
+		if (party.phase === 'watching') sendPause(playerTime);
+	}
+	function onUserSeek(time: number) {
+		console.log('[WP:user] seek', time.toFixed(1));
+		if (party.phase === 'watching') sendSeek(time);
+	}
 
 	async function switchAudio(idx: number) {
 		activeAudioIdx = idx;
@@ -214,7 +250,11 @@
 			onSubtitleSelect={selectSubtitleTrack}
 			onSubtitleOff={disableSubtitles}
 			bind:currentTime={playerTime}
-			autoplay
+			bind:paused={playerPaused}
+			autoplay={party.phase !== 'watching'}
+			{onUserPlay}
+			{onUserPause}
+			{onUserSeek}
 		/>
 	{:else}
 		<VideoPlayer

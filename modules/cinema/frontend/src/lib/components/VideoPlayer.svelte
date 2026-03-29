@@ -3,7 +3,7 @@
 	import { fade } from "svelte/transition";
 	// @ts-ignore — hls.js types are resolved at build time
 	import Hls from "hls.js";
-	import { Button, DropdownMenu, Icon, Popover, type DropdownMenuItem } from "glow";
+	import { Button, Data, DropdownMenu, Icon, Popover, type DropdownMenuItem } from "glow";
 	import GradientOverlay from "./GradientOverlay.svelte";
 	import Spinner from "./Spinner.svelte";
 
@@ -588,28 +588,16 @@
 							<Button variant="ghost" icon="Info" />
 						{/snippet}
 						{#snippet children()}
-							<div class="stats-panel">
-								<div class="stats-row">
-									<span class="stats-label">Progress</span>
-									<span class="stats-value">{torrentPercent}%</span>
-								</div>
-								<div class="stats-row">
-									<span class="stats-label">Downloaded</span>
-									<span class="stats-value">{formatBytes(streamStats.progress_bytes)} / {formatBytes(streamStats.total_bytes)}</span>
-								</div>
-								<div class="stats-row">
-									<span class="stats-label">Speed</span>
-									<span class="stats-value">{streamStats.download_speed_mbps.toFixed(1)} MB/s</span>
-								</div>
-								<div class="stats-row">
-									<span class="stats-label">Peers</span>
-									<span class="stats-value">{streamStats.peers}</span>
-								</div>
-								<div class="stats-row">
-									<span class="stats-label">Status</span>
-									<span class="stats-value">{streamStats.finished ? 'Complete' : 'Downloading'}</span>
-								</div>
-							</div>
+							<Data
+								variant="inline"
+								properties={[
+									{ label: 'Progress', value: `${torrentPercent}%` },
+									{ label: 'Downloaded', value: `${formatBytes(streamStats.progress_bytes)} / ${formatBytes(streamStats.total_bytes)}` },
+									{ label: 'Speed', value: `${streamStats.download_speed_mbps.toFixed(1)} MB/s` },
+									{ label: 'Peers', value: streamStats.peers },
+									{ label: 'Status', value: streamStats.finished ? 'Complete' : 'Downloading' },
+								]}
+							/>
 						{/snippet}
 					</Popover>
 				{/if}
@@ -882,33 +870,6 @@
 		font-family: "JetBrains Mono", monospace;
 		font-size: 0.7rem;
 		color: rgba(255, 255, 255, 0.4);
-	}
-
-	/* ── Stats panel ── */
-	.stats-panel {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		padding: 10px 14px;
-		min-width: 200px;
-	}
-
-	.stats-row {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		gap: 16px;
-	}
-
-	.stats-label {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.5);
-	}
-
-	.stats-value {
-		font-family: "JetBrains Mono", monospace;
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.85);
 	}
 
 	/* ── Pause icon ── */

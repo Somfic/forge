@@ -419,6 +419,7 @@ dependencies = [
  "futures",
  "hex 0.4.3",
  "librqbit",
+ "mime_guess",
  "reqwest 0.13.2",
  "serde",
  "sqlx",

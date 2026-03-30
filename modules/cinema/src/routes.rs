@@ -215,6 +215,26 @@ async fn image_proxy(
     } else {
         format!("original/{path}")
     };
+
+    // Disk cache: {storage}/cache/images/{path}
+    let cache_path = ctx.storage.join("cache/images").join(&path);
+
+    // Serve from cache if available
+    if cache_path.exists() {
+        let bytes = tokio::fs::read(&cache_path).await?;
+        let content_type = mime_guess::from_path(&cache_path)
+            .first_or_octet_stream()
+            .to_string();
+        return Ok((
+            [
+                (header::CONTENT_TYPE, content_type),
+                (header::CACHE_CONTROL, "public, max-age=604800".into()),
+            ],
+            bytes.into(),
+        ));
+    }
+
+    // Fetch from TMDB
     let url = format!("https://image.tmdb.org/t/p/{path}");
     let res = ctx
         .http
@@ -233,10 +253,20 @@ async fn image_proxy(
 
     let bytes = res.bytes().await?;
 
+    // Write to disk cache
+    if let Some(parent) = cache_path.parent() {
+        if let Err(e) = tokio::fs::create_dir_all(parent).await {
+            tracing::warn!("failed to create image cache dir {}: {e}", parent.display());
+        }
+    }
+    if let Err(e) = tokio::fs::write(&cache_path, &bytes).await {
+        tracing::warn!("failed to write image cache {}: {e}", cache_path.display());
+    }
+
     Ok((
         [
             (header::CONTENT_TYPE, content_type),
-            (header::CACHE_CONTROL, "public, max-age=86400".into()),
+            (header::CACHE_CONTROL, "public, max-age=604800".into()),
         ],
         bytes,
     ))
@@ -764,10 +794,9 @@ async fn stream_remux_hls(
 ) -> Result<Json<RemuxResponse>, AppError> {
     let engine = TorrentEngine::get();
     engine.start(&info_hash, file_idx).await?;
-    let path = engine.file_path(&info_hash, file_idx)?;
 
     let (session_id, playlist_url) =
-        crate::hls::start_session(&ctx.storage, &path, params.audio, params.t).await?;
+        crate::hls::start_session(&ctx.storage, &info_hash, file_idx, params.audio, params.t).await?;
 
     Ok(Json(RemuxResponse {
         session_id,
@@ -790,9 +819,16 @@ async fn hls_serve(
     crate::hls::touch(&session_id).await;
 
     let full_path = dir.join(&file);
-    let bytes = tokio::fs::read(&full_path)
-        .await
-        .map_err(|_| forge::Error::Generic(format!("HLS file not found: {file}")))?;
+    let bytes = match tokio::fs::read(&full_path).await {
+        Ok(b) => b,
+        Err(_) => {
+            // Check if ffmpeg crashed — return the real error instead of "file not found"
+            if let Some(error) = crate::hls::session_error(&session_id).await {
+                return Err(forge::Error::Generic(format!("Stream failed (ffmpeg exited): {error}")).into());
+            }
+            return Err(forge::Error::Generic(format!("HLS file not found: {file}")).into());
+        }
+    };
 
     let (content_type, cache) = if file.ends_with(".m3u8") {
         ("application/vnd.apple.mpegurl", "no-cache")

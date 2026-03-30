@@ -1,11 +1,20 @@
-FROM rust:1-bookworm AS builder
+FROM rust:1-bookworm AS chef
+RUN cargo install cargo-chef
+WORKDIR /app
+
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
 
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
 
-WORKDIR /app
-COPY . .
+COPY --from=planner /app/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json -p forge_server
 
+COPY . .
 RUN bun install --cwd frontend --trust
 RUN cargo build --release -p forge_server
 

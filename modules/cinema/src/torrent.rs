@@ -263,16 +263,57 @@ impl TorrentEngine {
             }
         };
 
-        // Wait for metadata + initial check, but don't block forever
-        tokio::time::timeout(
-            std::time::Duration::from_secs(30),
-            managed.wait_until_initialized(),
-        )
-        .await
-        .map_err(|_| {
-            forge::Error::Generic("Timed out waiting for torrent metadata (no peers found)".into())
-        })?
-        .map_err(|e| forge::Error::Generic(format!("Torrent init failed: {e}")))?;
+        // Wait for metadata + initial check, but don't block forever.
+        // Log progress so slow peer discovery is visible.
+        {
+            let init_fut = managed.wait_until_initialized();
+            tokio::pin!(init_fut);
+
+            let mut elapsed = 0u64;
+            let result = loop {
+                tokio::select! {
+                    res = &mut init_fut => break Some(res),
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
+                        elapsed += 5;
+                        let stats = managed.stats();
+                        let peers = stats.live.as_ref()
+                            .map(|l| l.snapshot.peer_stats.queued + l.snapshot.peer_stats.live)
+                            .unwrap_or(0);
+                        self.span.in_scope(|| {
+                            tracing::info!(
+                                info_hash,
+                                elapsed_secs = elapsed,
+                                peers,
+                                downloaded = %format_bytes(stats.progress_bytes),
+                                "Waiting for torrent metadata..."
+                            )
+                        });
+                        if elapsed >= 30 {
+                            break None;
+                        }
+                    }
+                }
+            };
+
+            match result {
+                Some(Ok(())) => {}
+                Some(Err(e)) => {
+                    return Err(forge::Error::Generic(format!("Torrent init failed: {e}")));
+                }
+                None => {
+                    let stats = managed.stats();
+                    let peers = stats.live.as_ref()
+                        .map(|l| l.snapshot.peer_stats.queued + l.snapshot.peer_stats.live)
+                        .unwrap_or(0);
+                    self.span.in_scope(|| {
+                        tracing::warn!(info_hash, peers, "Torrent metadata timeout after 30s")
+                    });
+                    return Err(forge::Error::Generic(format!(
+                        "Timed out waiting for torrent metadata ({peers} peers found but metadata exchange incomplete)"
+                    )));
+                }
+            }
+        }
 
         // Pause other torrents to prioritize the one being watched
         self.pause_all_except(info_hash);

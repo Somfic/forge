@@ -1,16 +1,21 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::time::Instant;
 
 use tokio::sync::Mutex;
+use tokio::sync::watch;
 
 static SESSIONS: OnceLock<Mutex<HashMap<String, HlsSession>>> = OnceLock::new();
+
+use std::sync::OnceLock;
 
 pub struct HlsSession {
     pub dir: PathBuf,
     pub child: Option<tokio::process::Child>,
     pub last_access: Instant,
+    /// Receives the ffmpeg error message when the process exits with failure.
+    /// `None` means still running, `Some(msg)` means exited with that error.
+    pub exit_error: watch::Receiver<Option<String>>,
 }
 
 fn sessions() -> &'static Mutex<HashMap<String, HlsSession>> {
@@ -30,11 +35,13 @@ fn new_session_id() -> String {
 }
 
 /// Start an HLS remux session. Returns (session_id, playlist_path).
-/// Spawns ffmpeg to write HLS segments to a temp directory.
+/// Spawns ffmpeg reading from a torrent stream (blocks on missing pieces)
+/// and writing HLS segments to a temp directory.
 /// If `start_time` > 0, ffmpeg seeks to that position before encoding.
 pub async fn start_session(
     storage: &forge::Storage,
-    input_path: &std::path::Path,
+    info_hash: &str,
+    file_idx: usize,
     audio_index: usize,
     start_time: f64,
 ) -> forge::Result<(String, String)> {
@@ -54,11 +61,15 @@ pub async fn start_session(
         ]);
     }
 
-    let child = tokio::process::Command::new("ffmpeg")
+    let input_display = format!("torrent:{info_hash}/{file_idx}");
+
+    // Feed ffmpeg from stdin using the torrent stream, which blocks on
+    // missing pieces rather than hitting premature EOF on a partial file.
+    let mut child = tokio::process::Command::new("ffmpeg")
         .args(&pre_args)
         .args([
             "-i",
-            input_path.to_str().unwrap_or(""),
+            "pipe:0",
             "-map",
             "0:v:0",
             "-map",
@@ -87,11 +98,89 @@ pub async fn start_session(
             "event",
         ])
         .arg(playlist_path.to_str().unwrap_or(""))
-        .stdin(std::process::Stdio::null())
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| forge::Error::Generic(format!("Failed to start ffmpeg HLS: {e}")))?;
+
+    // Pipe the torrent stream into ffmpeg's stdin
+    let stdin = child.stdin.take()
+        .ok_or_else(|| forge::Error::Generic("Failed to open ffmpeg stdin".into()))?;
+
+    let engine = crate::torrent::TorrentEngine::get();
+    let reader = engine.stream(info_hash, file_idx)?;
+
+    let span = tracing::Span::current();
+
+    tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+
+        let mut reader = reader;
+        let mut stdin = stdin;
+        let mut buf = vec![0u8; 64 * 1024];
+        loop {
+            match reader.read(&mut buf).await {
+                Ok(0) => break,   // torrent stream finished (full file read)
+                Ok(n) => {
+                    use tokio::io::AsyncWriteExt;
+                    if stdin.write_all(&buf[..n]).await.is_err() {
+                        break; // ffmpeg closed stdin (killed or done)
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // Capture stderr and track process exit
+    let (exit_tx, exit_rx) = watch::channel(None);
+    let stderr = child.stderr.take();
+    let sid = session_id.clone();
+
+    tokio::spawn(tracing::Instrument::instrument(async move {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        let Some(stderr) = stderr else { return };
+        let mut reader = BufReader::new(stderr);
+        let mut line = String::new();
+        let mut last_lines: Vec<String> = Vec::new();
+
+        loop {
+            line.clear();
+            match reader.read_line(&mut line).await {
+                Ok(0) => break, // EOF — ffmpeg exited
+                Ok(_) => {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        tracing::debug!(session = %sid, "ffmpeg: {trimmed}");
+                        // Keep last 5 lines for error reporting
+                        if last_lines.len() >= 5 {
+                            last_lines.remove(0);
+                        }
+                        last_lines.push(trimmed.to_string());
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(session = %sid, "ffmpeg stderr read error: {e}");
+                    break;
+                }
+            }
+        }
+
+        // ffmpeg has exited — check if it completed successfully or failed
+        let has_error = last_lines.iter().any(|l| {
+            l.contains("Error") || l.contains("error") || l.contains("Invalid") || l.contains("No such file")
+        });
+
+        if has_error {
+            let error_context = last_lines.join("\n");
+            tracing::warn!(session = %sid, input = %input_display, "ffmpeg failed: {error_context}");
+            let _ = exit_tx.send(Some(error_context));
+        } else {
+            tracing::info!(session = %sid, input = %input_display, "ffmpeg finished transcoding successfully");
+        }
+    }, span));
 
     sessions().lock().await.insert(
         session_id.clone(),
@@ -99,11 +188,17 @@ pub async fn start_session(
             dir,
             child: Some(child),
             last_access: Instant::now(),
+            exit_error: exit_rx,
         },
     );
 
     // Wait for the playlist to have at least one segment (up to 10s)
     for _ in 0..100 {
+        // Check if ffmpeg already died before producing any segments
+        if let Some(error) = session_error(&session_id).await {
+            return Err(forge::Error::Generic(format!("ffmpeg failed: {error}")));
+        }
+
         if let Ok(content) = tokio::fs::read_to_string(&playlist_path).await {
             if content.contains("#EXTINF") {
                 break;
@@ -126,6 +221,14 @@ pub async fn touch(session_id: &str) {
 /// Get the directory for a session (if it exists).
 pub async fn session_dir(session_id: &str) -> Option<PathBuf> {
     sessions().lock().await.get(session_id).map(|s| s.dir.clone())
+}
+
+/// Check if the ffmpeg process for a session has exited with an error.
+/// Returns the error message if it has, None if still running or session doesn't exist.
+pub async fn session_error(session_id: &str) -> Option<String> {
+    let map = sessions().lock().await;
+    let session = map.get(session_id)?;
+    session.exit_error.borrow().clone()
 }
 
 /// Stop and clean up a specific session.

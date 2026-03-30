@@ -543,6 +543,10 @@
 			<div class="loading-progress">
 				<span class="loading-detail">{streamError}</span>
 			</div>
+		{:else if streamStats && !streamStats.finished}
+			<div class="loading-progress">
+				<span class="loading-detail">{streamStats.download_speed_mbps.toFixed(1)} MB/s · {streamStats.peers} peers</span>
+			</div>
 		{/if}
 	</div>
 

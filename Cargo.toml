@@ -4,7 +4,7 @@ members = ["core", "server", "modules/*"]
 
 [workspace.dependencies]
 axum = { version = "0.8.8", features = ["ws"] }
-schemars = "0.8"
+schemars = "1.2"
 rand = "0.8"
 async-trait = "0.1.89"
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }

@@ -180,7 +180,7 @@
 
 	.sidebar {
 		width: 35vw;
-		height: calc(100vh - var(--party-bar-height));
+		height: 100vh;
 		overflow-y: auto;
 		padding: 2rem;
 		padding-top: 15vh;

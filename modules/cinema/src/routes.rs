@@ -50,8 +50,6 @@ pub fn router() -> OpenApiRouter<AppContext> {
         .route("/hls/{session_id}", axum::routing::delete(hls_stop))
         .route("/image/{*path}", axum::routing::get(image_proxy))
         .route("/files/{*path}", axum::routing::get(serve_file))
-        .route("/watch-party/create", axum::routing::get(crate::watch_party::ws_create))
-        .route("/watch-party/join/{code}", axum::routing::get(crate::watch_party::ws_join))
 }
 
 #[derive(Deserialize, IntoParams)]

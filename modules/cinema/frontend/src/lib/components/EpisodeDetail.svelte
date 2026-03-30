@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Season, Episode, WatchHistoryItem } from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
-	import { Button, Text } from "glow";
+	import { Text } from "glow";
 	import PlayCard from "./PlayCard.svelte";
 	import DownloadButton from "./DownloadButton.svelte";
 
@@ -12,7 +12,6 @@
 		tmdbId,
 		resumeEntry,
 		loadingStreams = false,
-		onback,
 		onselectepisode,
 		onplay,
 	}: {
@@ -22,7 +21,6 @@
 		tmdbId: number;
 		resumeEntry?: WatchHistoryItem | null;
 		loadingStreams?: boolean;
-		onback: () => void;
 		onselectepisode: (season: number, episode: number) => void;
 		onplay?: () => void;
 	} = $props();
@@ -48,7 +46,6 @@
 </script>
 
 <div class="episode-strip">
-	<Button variant="ghost" icon="ArrowLeft" onclick={onback} />
 	<Text size="sm" weight="semibold">{season.name}</Text>
 	<div class="episode-list">
 		{#each season.episodes as ep}
@@ -180,7 +177,7 @@
 
 	.sidebar {
 		width: 35vw;
-		height: 100vh;
+		height: 100%;
 		overflow-y: auto;
 		padding: 2rem;
 		padding-top: 15vh;

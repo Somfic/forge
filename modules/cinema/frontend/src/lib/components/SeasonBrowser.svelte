@@ -1,16 +1,14 @@
 <script lang="ts">
 	import type { Season } from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
-	import { Button, MediaCard, Text } from "glow";
+	import { MediaCard, Text } from "glow";
 
 	let {
 		seasons,
-		onback,
 		onscrollseason,
 		onselectepisode,
 	}: {
 		seasons: Season[];
-		onback: () => void;
 		onscrollseason: (seasonNumber: number) => void;
 		onselectepisode: (season: number, episode: number) => void;
 	} = $props();
@@ -20,9 +18,6 @@
 </script>
 
 <div class="browser">
-	<div class="back">
-		<Button variant="ghost" icon="ArrowLeft" onclick={onback} />
-	</div>
 	<div class="season-grid" style="grid-template-columns: repeat({cols}, 180px)">
 		{#each selectableSeasons as season}
 			<MediaCard
@@ -51,12 +46,6 @@
 		gap: 1rem;
 		background: rgba(0, 0, 0, 0.35);
 		backdrop-filter: blur(16px);
-	}
-
-	.back {
-		position: absolute;
-		top: 2rem;
-		left: 2rem;
 	}
 
 	.season-grid {

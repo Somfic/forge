@@ -10,8 +10,19 @@
 	} from "$lib/api.gen";
 	import { imageUrl } from "$lib/utils";
 	import { Heading, Input, MediaCard, Text } from "glow";
+	import { page } from "$app/state";
+	import { replaceState } from "$app/navigation";
+	import { setFocusSearch } from "$lib/topbar.svelte";
+	import { onDestroy } from "svelte";
+	import { browser } from "$app/environment";
+	import { fade } from "svelte/transition";
 
-	let query = $state("");
+	let searchInput: HTMLInputElement | undefined;
+
+	setFocusSearch(() => searchInput?.focus());
+	onDestroy(() => setFocusSearch(null));
+
+	let query = $state(page.url.searchParams.get("q") ?? "");
 	let results = $state<SearchResult[]>([]);
 	let loading = $state(false);
 	let timeout: ReturnType<typeof setTimeout>;
@@ -53,8 +64,20 @@
 
 	const browsing = $derived(query.length < 2 && results.length === 0);
 
+	function updateQueryParam() {
+		if (!browser) return;
+		const u = new URL(page.url);
+		if (query.length >= 2) {
+			u.searchParams.set("q", query);
+		} else {
+			u.searchParams.delete("q");
+		}
+		replaceState(u, {});
+	}
+
 	function onInput() {
 		clearTimeout(timeout);
+		updateQueryParam();
 		if (query.length < 2) {
 			results = [];
 			return;
@@ -69,6 +92,15 @@
 			}
 		}, 300);
 	}
+
+	// Run initial search if q param is present
+	if (browser && query.length >= 2) {
+		loading = true;
+		search({ q: query }).then((res) => {
+			results = res.data;
+			loading = false;
+		}).catch(() => { loading = false; });
+	}
 </script>
 
 <svelte:head>
@@ -82,6 +114,7 @@
 		value={query}
 		icon={"Search"}
 		{loading}
+		inputRef={(el) => (searchInput = el)}
 		onChange={(v) => {
 			query = v;
 			onInput();
@@ -229,7 +262,8 @@
 		{/if}
 	{:else if results.length > 0}
 		<div class="grid">
-			{#each results as item}
+			{#each results as item (item.id + item.media_type)}
+				<div transition:fade={{ duration: 150 }}>
 				<MediaCard
 					src={item.poster_path
 						? imageUrl(item.poster_path, "w342")
@@ -251,6 +285,7 @@
 						</Text>
 					{/snippet}
 				</MediaCard>
+				</div>
 			{/each}
 		</div>
 	{/if}

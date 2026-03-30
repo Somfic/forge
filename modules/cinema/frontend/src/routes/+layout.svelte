@@ -1,12 +1,29 @@
 <script lang="ts">
 	import "glow/styles";
+	import TopBar from "$lib/components/TopBar.svelte";
 
 	let { children } = $props();
 </script>
 
-{@render children()}
+<div class="app">
+	<TopBar />
+	<main>
+		{@render children()}
+	</main>
+</div>
 
 <style>
+	.app {
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+	}
+
+	main {
+		flex: 1;
+		min-height: 0;
+	}
+
 	@font-face {
 		font-family: 'Subtitle';
 		src: url('/cinema/fonts/Helvetica Neue 67 Medium Condensed.otf') format('opentype');

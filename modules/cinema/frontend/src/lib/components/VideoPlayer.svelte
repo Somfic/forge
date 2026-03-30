@@ -3,7 +3,14 @@
 	import { fade } from "svelte/transition";
 	// @ts-ignore — hls.js types are resolved at build time
 	import Hls from "hls.js";
-	import { Button, Data, DropdownMenu, Icon, Popover, type DropdownMenuItem } from "glow";
+	import {
+		Button,
+		Data,
+		DropdownMenu,
+		Icon,
+		Popover,
+		type DropdownMenuItem,
+	} from "glow";
 	import GradientOverlay from "./GradientOverlay.svelte";
 	import Spinner from "./Spinner.svelte";
 
@@ -81,7 +88,13 @@
 		startTime?: number;
 		currentTime?: number;
 		duration?: number;
-		streamStats?: { progress_bytes: number; total_bytes: number; download_speed_mbps: number; peers: number; finished: boolean } | null;
+		streamStats?: {
+			progress_bytes: number;
+			total_bytes: number;
+			download_speed_mbps: number;
+			peers: number;
+			finished: boolean;
+		} | null;
 		paused?: boolean;
 	} = $props();
 
@@ -128,9 +141,11 @@
 	const resolutionMenuItems = $derived<DropdownMenuItem[]>(
 		resolutions.map((res) => ({
 			label: res,
-			shortcut: res === activeResolution ? "●" : undefined,
+			selected: res === activeResolution,
 			onclick: () => {
-				const best = streams.find((s: StreamOption) => s.resolution === res);
+				const best = streams.find(
+					(s: StreamOption) => s.resolution === res,
+				);
 				if (best) onStreamSelect?.(best);
 			},
 		})),
@@ -139,18 +154,21 @@
 	const subtitleMenuItems = $derived<DropdownMenuItem[]>([
 		{
 			label: "Off",
-			shortcut: subtitles.length === 0 ? "●" : undefined,
+			selected: subtitles.length === 0,
 			onclick: () => onSubtitleOff?.(),
 		},
 		...subtitleTracks.map((track) => {
 			const isEmbedded = track.id.startsWith("embedded:");
 			const dupes = subtitleTracks.filter(
-				(t) => t.language === track.language && t.id.startsWith("embedded:") === isEmbedded,
+				(t) =>
+					t.language === track.language &&
+					t.id.startsWith("embedded:") === isEmbedded,
 			);
-			const suffix = dupes.length > 1 ? ` #${dupes.indexOf(track) + 1}` : "";
+			const suffix =
+				dupes.length > 1 ? ` #${dupes.indexOf(track) + 1}` : "";
 			return {
 				label: `${track.language}${suffix}`,
-				shortcut: track.url === activeTrackUrl ? "●" : undefined,
+				selected: track.url === activeTrackUrl,
 				onclick: () => onSubtitleSelect?.(track),
 			} as DropdownMenuItem;
 		}),
@@ -162,7 +180,7 @@
 			.slice(0, 5)
 			.map((stream: StreamOption) => ({
 				label: `${stream.codec ?? stream.source}${stream.size_display ? ` · ${stream.size_display}` : ""}`,
-				shortcut: stream.info_hash === activeStreamHash ? "●" : undefined,
+				selected: stream.info_hash === activeStreamHash,
 				onclick: () => onStreamSelect?.(stream),
 			})),
 	);
@@ -207,13 +225,17 @@
 	);
 	const torrentPercent = $derived(
 		streamStats && streamStats.total_bytes > 0
-			? Math.round(streamStats.progress_bytes / streamStats.total_bytes * 100)
+			? Math.round(
+					(streamStats.progress_bytes / streamStats.total_bytes) *
+						100,
+				)
 			: 0,
 	);
 	let statsOpen = $state(false);
 
 	function formatBytes(bytes: number): string {
-		if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+		if (bytes >= 1_073_741_824)
+			return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
 		if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(0)} MB`;
 		return `${(bytes / 1024).toFixed(0)} KB`;
 	}
@@ -400,7 +422,8 @@
 					loading = false;
 					hls?.destroy();
 					hls = null;
-					streamError = "Stream failed. The torrent may not have enough peers.";
+					streamError =
+						"Stream failed. The torrent may not have enough peers.";
 				}
 			});
 		} else if (
@@ -474,7 +497,7 @@
 	class:fullscreen={isFullscreen}
 	class:cursor-hidden={cursorHidden}
 	style:--accent={accent ? `rgb(${accent})` : undefined}
-	style:--backdrop={backdrop ? `url(${backdrop})` : 'none'}
+	style:--backdrop={backdrop ? `url(${backdrop})` : "none"}
 	bind:this={containerEl}
 	onmousemove={showControls}
 	onmouseenter={showControls}
@@ -506,18 +529,24 @@
 		}}
 		onloadedmetadata={() => {
 			if (videoEl) {
-				duration = (knownDuration > 0 && (!isFinite(videoEl.duration) || videoEl.duration < 30))
-					? knownDuration
-					: videoEl.duration;
+				duration =
+					knownDuration > 0 &&
+					(!isFinite(videoEl.duration) || videoEl.duration < 30)
+						? knownDuration
+						: videoEl.duration;
 				if (startTime > 0) {
 					videoEl.currentTime = startTime;
 				}
 			}
 		}}
-		oncanplay={() => { loading = false; streamError = null; }}
+		oncanplay={() => {
+			loading = false;
+			streamError = null;
+		}}
 		onwaiting={() => (loading = true)}
 		onerror={() => {
-			streamError = "Stream failed. The torrent may not have enough peers.";
+			streamError =
+				"Stream failed. The torrent may not have enough peers.";
 			loading = true;
 		}}
 	></video>
@@ -545,12 +574,18 @@
 			</div>
 		{:else if streamStats && !streamStats.finished}
 			<div class="loading-progress">
-				<span class="loading-detail">{streamStats.download_speed_mbps.toFixed(1)} MB/s · {streamStats.peers} peers</span>
+				<span class="loading-detail">
+					{streamStats.download_speed_mbps.toFixed(1)} MB/s · {streamStats.peers}
+					peers
+				</span>
 			</div>
 		{/if}
 	</div>
 
-	<div class="pause-icon" class:visible={paused && !loading && currentTime > 0}>
+	<div
+		class="pause-icon"
+		class:visible={paused && !loading && currentTime > 0}
+	>
 		<Icon name="Pause" size={48} />
 	</div>
 
@@ -595,11 +630,28 @@
 							<Data
 								variant="inline"
 								properties={[
-									{ label: 'Progress', value: `${torrentPercent}%` },
-									{ label: 'Downloaded', value: `${formatBytes(streamStats.progress_bytes)} / ${formatBytes(streamStats.total_bytes)}` },
-									{ label: 'Speed', value: `${streamStats.download_speed_mbps.toFixed(1)} MB/s` },
-									{ label: 'Peers', value: streamStats.peers },
-									{ label: 'Status', value: streamStats.finished ? 'Complete' : 'Downloading' },
+									{
+										label: "Progress",
+										value: `${torrentPercent}%`,
+									},
+									{
+										label: "Downloaded",
+										value: `${formatBytes(streamStats.progress_bytes)} / ${formatBytes(streamStats.total_bytes)}`,
+									},
+									{
+										label: "Speed",
+										value: `${streamStats.download_speed_mbps.toFixed(1)} MB/s`,
+									},
+									{
+										label: "Peers",
+										value: streamStats.peers,
+									},
+									{
+										label: "Status",
+										value: streamStats.finished
+											? "Complete"
+											: "Downloading",
+									},
 								]}
 							/>
 						{/snippet}
@@ -676,7 +728,7 @@
 				{#if resolutions.length > 1 && onStreamSelect}
 					<DropdownMenu items={resolutionMenuItems} align="right">
 						{#snippet trigger()}
-							<Button variant="ghost" icon="Settings" />
+							<Button variant="ghost" icon="Hd" />
 						{/snippet}
 					</DropdownMenu>
 				{/if}
@@ -693,14 +745,21 @@
 					<DropdownMenu
 						items={audioTracks.map((track) => ({
 							label: track.name,
-							shortcut: track.id === activeAudioTrack ? "●" : track.lang ?? undefined,
+							shortcut:
+								track.id === activeAudioTrack
+									? "●"
+									: (track.lang ?? undefined),
 							onclick: () => {
 								if (onAudioSelect) {
 									onAudioSelect(track);
 								} else if (videoEl) {
 									const native = (videoEl as any).audioTracks;
 									if (native) {
-										for (let i = 0; i < native.length; i++) {
+										for (
+											let i = 0;
+											i < native.length;
+											i++
+										) {
 											native[i].enabled = i === track.id;
 										}
 									}
@@ -727,26 +786,49 @@
 						{#snippet children()}
 							<div class="sub-menu">
 								{#each subtitleMenuItems as item, i}
-									<button class="sub-item" onclick={item.onclick}>
+									<button
+										class="sub-item"
+										onclick={item.onclick}
+									>
 										<span>
 											{item.label}
 											{#if i > 0 && subtitleTracks[i - 1]?.id.startsWith("embedded:")}
-												<span class="sub-badge">Embedded</span>
+												<span class="sub-badge"
+													>Embedded</span
+												>
 											{/if}
 										</span>
 										{#if item.shortcut}
-											<span class="sub-dot">{item.shortcut}</span>
+											<span class="sub-dot"
+												>{item.shortcut}</span
+											>
 										{/if}
 									</button>
 								{/each}
 								{#if subtitles.length > 0}
 									<div class="sub-divider"></div>
 									<div class="sub-offset">
-										<Button variant="ghost" icon="Minus" onclick={() => { subtitleOffset -= 0.25; }} />
+										<Button
+											variant="ghost"
+											icon="Minus"
+											onclick={() => {
+												subtitleOffset -= 0.25;
+											}}
+										/>
 										<span class="sub-offset-value">
-											{subtitleOffset - defaultOffset > 0 ? "+" : ""}{(subtitleOffset - defaultOffset).toFixed(1)}s
+											{subtitleOffset - defaultOffset > 0
+												? "+"
+												: ""}{(
+												subtitleOffset - defaultOffset
+											).toFixed(1)}s
 										</span>
-										<Button variant="ghost" icon="Plus" onclick={() => { subtitleOffset += 0.25; }} />
+										<Button
+											variant="ghost"
+											icon="Plus"
+											onclick={() => {
+												subtitleOffset += 0.25;
+											}}
+										/>
 									</div>
 								{/if}
 							</div>
@@ -868,7 +950,6 @@
 		gap: 4px;
 		margin-top: 12px;
 	}
-
 
 	.loading-detail {
 		font-family: "JetBrains Mono", monospace;

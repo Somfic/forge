@@ -3,6 +3,7 @@
 	import { replaceState } from "$app/navigation";
 	import { onDestroy } from "svelte";
 	import { fade } from "svelte/transition";
+	import * as topbar from "$lib/topbar.svelte";
 	import {
 		movieStreams,
 		tvStreams,
@@ -227,17 +228,23 @@
 		updateParams();
 	}
 
-	function goBack() {
+	function goBack(): boolean {
 		if (selectedStream !== null) {
 			stopPlaying();
 		} else if (selectedEpisode !== null) {
 			selectedEpisode = null;
 			streams = [];
-		} else {
+		} else if (selectedSeason !== null) {
 			selectedSeason = null;
+		} else {
+			return false;
 		}
 		updateParams();
+		return true;
 	}
+
+	topbar.setGoBack(goBack);
+	onDestroy(() => { topbar.setGoBack(null); });
 
 	function updateParams() {
 		const u = new URL(window.location.href);
@@ -604,17 +611,6 @@
 		bind:this={gradientLeftEl}
 	></div>
 
-	<!-- Back button -->
-	{#if slideIndex === 0 && !selectedStream}
-		<div class="back-button">
-			<Button
-				variant="ghost"
-				icon="ArrowLeft"
-				onclick={() => window.history.back()}
-			/>
-		</div>
-	{/if}
-
 	<!-- Slider -->
 	<div
 		class="slider"
@@ -640,7 +636,6 @@
 			{#if item.seasons?.length}
 				<SeasonBrowser
 					seasons={item.seasons}
-					onback={goBack}
 					onscrollseason={(n) => {
 						selectedSeason = n;
 						updateParams();
@@ -660,7 +655,6 @@
 					tmdbId={item.id}
 					{resumeEntry}
 					{loadingStreams}
-					onback={goBack}
 					onselectepisode={selectEpisode}
 					onplay={playEpisode}
 				/>
@@ -724,14 +718,6 @@
 
 	:global(body) {
 		background: transparent !important;
-	}
-
-	/* ── Back button ── */
-	.back-button {
-		position: fixed;
-		top: 1rem;
-		left: 1rem;
-		z-index: 5;
 	}
 
 	/* ── Backdrop ── */
@@ -809,7 +795,7 @@
 		z-index: 1;
 		display: flex;
 		width: 300vw;
-		height: 100vh;
+		height: 100%;
 		overflow: hidden;
 		transition:
 			transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
@@ -823,7 +809,7 @@
 
 	.page {
 		width: 100vw;
-		height: 100vh;
+		height: 100%;
 		flex-shrink: 0;
 		overflow-y: auto;
 	}

@@ -302,8 +302,7 @@
 <style>
 	.sidebar {
 		width: 40vw;
-		min-height: 100vh;
-		min-height: 100dvh;
+		min-height: 100%;
 		padding: 2rem;
 		display: flex;
 		flex-direction: column;

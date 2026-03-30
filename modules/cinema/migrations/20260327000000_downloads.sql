@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS downloads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY,
     media_type TEXT NOT NULL,
     tmdb_id INTEGER NOT NULL,
     title TEXT NOT NULL,
@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS downloads (
     downloaded_bytes INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'queued',
     error TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
     completed_at TEXT,
     UNIQUE(media_type, tmdb_id, season, episode)
 );

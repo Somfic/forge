@@ -19,6 +19,10 @@ struct Cli {
     #[arg(long, env = "FORGE_DATA_DIR")]
     data_dir: Option<PathBuf>,
 
+    /// Database URL (e.g. sqlite:./data.db, postgres://user:pass@host/db)
+    #[arg(long, env = "FORGE_DATABASE_URL")]
+    database_url: Option<String>,
+
     /// Path to config file
     #[arg(short, long, default_value = "forge.toml", env = "FORGE_CONFIG")]
     config: PathBuf,
@@ -75,6 +79,9 @@ async fn main_wrapper() -> Result<()> {
     }
     if let Some(data_dir) = cli.data_dir {
         config.data_dir = data_dir;
+    }
+    if cli.database_url.is_some() {
+        config.database_url = cli.database_url;
     }
 
     Platform::new(config, modules()).dev(cli.dev).run().await

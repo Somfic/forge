@@ -5,7 +5,7 @@ members = ["core", "server", "modules/*"]
 [workspace.dependencies]
 axum = "0.8.8"
 async-trait = "0.1.89"
-sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio"] }
+sqlx = { version = "0.8.6", features = ["any", "sqlite", "postgres", "mysql", "runtime-tokio"] }
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.50.0", features = ["full"] }
 tracing = "0.1.44"

@@ -17,7 +17,7 @@ pub struct Config {
     pub port: u16,
     #[serde(default = "default_data_dir")]
     pub data_dir: PathBuf,
-    // pub auth: AuthConfig,
+    pub database_url: Option<String>,
     #[serde(flatten)]
     pub modules: HashMap<String, toml::Value>,
 }

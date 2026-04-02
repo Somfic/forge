@@ -745,10 +745,7 @@
 					<DropdownMenu
 						items={audioTracks.map((track) => ({
 							label: track.name,
-							shortcut:
-								track.id === activeAudioTrack
-									? "●"
-									: (track.lang ?? undefined),
+							selected: track.id === activeAudioTrack,
 							onclick: () => {
 								if (onAudioSelect) {
 									onAudioSelect(track);

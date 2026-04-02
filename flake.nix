@@ -42,7 +42,6 @@
           ];
 
           env = {
-            DATABASE_URL = "sqlite:data/forge.db";
           };
         };
       });

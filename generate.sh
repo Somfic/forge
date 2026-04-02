@@ -1,16 +1,12 @@
 #!/bin/bash
 set -e
 
-# Export OpenAPI specs from Rust tests (no server needed)
-echo "Exporting OpenAPI specs..."
-cargo test --workspace export_openapi_spec -- --nocapture 2>&1 | grep -E "^(running|test|Wrote)" || true
+# Export OpenAPI spec from Rust tests
+echo "Exporting OpenAPI spec..."
+cargo test export_openapi_spec -- --nocapture 2>&1 | grep -E "^(running|test|Wrote)" || true
 
-# Generate TypeScript clients
-for dir in modules/*/frontend; do
-    if [ -f "$dir/orval.config.ts" ]; then
-        echo "Generating API client for $dir..."
-        cd "$dir" && bunx orval && cd - > /dev/null
-    fi
-done
+# Generate TypeScript client
+echo "Generating API client..."
+cd frontend && bunx orval && cd -
 
-echo "Done. Run 'cargo run -p forge_server' to build and start."
+echo "Done. Run 'cargo run' to build and start."

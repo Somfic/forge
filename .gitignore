@@ -1,5 +1,5 @@
 /target
-forge.toml
+cinema.toml
 /data
 /.claude
 node_modules

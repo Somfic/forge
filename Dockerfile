@@ -12,11 +12,11 @@ RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
 
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json -p forge_server
+RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY . .
 RUN bun install --cwd frontend --trust
-RUN cargo build --release -p forge_server
+RUN cargo build --release
 
 FROM debian:bookworm-slim
 
@@ -25,9 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/forge /usr/local/bin/forge
-COPY --from=builder /app/frontend/apps/dashboard/build /app/frontend/apps/dashboard/build
-COPY --from=builder /app/modules/cinema/frontend/build /app/modules/cinema/frontend/build
+COPY --from=builder /app/target/release/cinema /usr/local/bin/cinema
+COPY --from=builder /app/frontend/build /app/frontend/build
 
 WORKDIR /app
-ENTRYPOINT ["forge"]
+ENTRYPOINT ["cinema"]

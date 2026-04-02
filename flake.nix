@@ -1,5 +1,5 @@
 {
-  description = "Forge dev environment";
+  description = "Cinema dev environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";

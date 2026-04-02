@@ -1,0 +1,103 @@
+use std::env;
+use std::path::PathBuf;
+
+use serde::Deserialize;
+
+use crate::app::{Error, Result};
+
+#[derive(Deserialize)]
+pub struct Config {
+    #[serde(default = "default_host")]
+    pub host: String,
+    #[serde(default = "default_port")]
+    pub port: u16,
+    #[serde(default = "default_data_dir")]
+    pub data_dir: PathBuf,
+    pub database_url: Option<String>,
+
+    #[serde(default)]
+    pub tmdb_api_key: String,
+    #[serde(default = "default_stream_sources")]
+    pub stream_sources: Vec<String>,
+    #[serde(default = "default_subtitle_languages")]
+    pub subtitle_languages: Vec<String>,
+    #[serde(default = "default_max_concurrent_downloads")]
+    pub max_concurrent_downloads: usize,
+    #[serde(default = "default_torrent_listen_port")]
+    pub torrent_port: u16,
+    #[serde(default = "default_dht_enabled")]
+    pub use_dht: bool,
+}
+
+impl Config {
+    pub fn from_file(path: impl AsRef<std::path::Path>) -> Result<Self> {
+        let path = path.as_ref();
+        match std::fs::read_to_string(path) {
+            Ok(content) => Ok(toml::from_str(&content)?),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(toml::from_str("")?),
+            Err(e) => Err(Error::ConfigReadError {
+                path: path.display().to_string(),
+                source: e,
+            }),
+        }
+    }
+
+    pub fn apply_env_overrides(&mut self) {
+        if let Ok(v) = env::var("CINEMA_TMDB_API_KEY") {
+            self.tmdb_api_key = v;
+        }
+        if let Ok(v) = env::var("CINEMA_STREAM_SOURCES") {
+            self.stream_sources = v.split(',').map(|s| s.trim().to_string()).collect();
+        }
+        if let Ok(v) = env::var("CINEMA_SUBTITLE_LANGUAGES") {
+            self.subtitle_languages = v.split(',').map(|s| s.trim().to_string()).collect();
+        }
+        if let Ok(v) = env::var("CINEMA_MAX_CONCURRENT_DOWNLOADS") {
+            if let Ok(n) = v.parse() {
+                self.max_concurrent_downloads = n;
+            }
+        }
+        if let Ok(v) = env::var("CINEMA_TORRENT_PORT") {
+            if let Ok(n) = v.parse() {
+                self.torrent_port = n;
+            }
+        }
+        if let Ok(v) = env::var("CINEMA_USE_DHT") {
+            if let Ok(b) = v.parse() {
+                self.use_dht = b;
+            }
+        }
+    }
+}
+
+fn default_host() -> String {
+    "0.0.0.0".to_string()
+}
+
+fn default_port() -> u16 {
+    3000
+}
+
+fn default_data_dir() -> PathBuf {
+    PathBuf::from("./data/")
+}
+
+fn default_max_concurrent_downloads() -> usize {
+    2
+}
+
+fn default_subtitle_languages() -> Vec<String> {
+    vec!["en".to_string()]
+}
+
+fn default_stream_sources() -> Vec<String> {
+    vec!["https://torrentio.strem.fun".to_string()]
+}
+
+fn default_torrent_listen_port() -> u16 {
+    6881
+}
+
+fn default_dht_enabled() -> bool {
+    true
+}

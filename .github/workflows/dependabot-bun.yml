@@ -3,7 +3,7 @@ name: Dependabot Bun Lockfile
 on:
   pull_request:
     paths:
-      - frontend/**/package.json
+      - frontend/package.json
 
 permissions:
   contents: write

@@ -1,0 +1,256 @@
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use axum::Router;
+use clap::Parser;
+use tower_http::services::{ServeDir, ServeFile};
+use tracing::info;
+
+mod app;
+mod config;
+mod downloads;
+mod hls;
+mod logging;
+mod proxy;
+mod routes;
+mod streams;
+mod subtitles;
+mod tmdb;
+pub(crate) mod torrent;
+
+use app::{AppContext, Result};
+use config::Config;
+
+#[derive(Parser)]
+#[command(name = "cinema", about = "Cinema media server")]
+struct Cli {
+    /// Host address to bind to
+    #[arg(long, env = "CINEMA_HOST")]
+    host: Option<String>,
+
+    /// Port to listen on
+    #[arg(short, long, env = "CINEMA_PORT")]
+    port: Option<u16>,
+
+    /// Path to data directory
+    #[arg(long, env = "CINEMA_DATA_DIR")]
+    data_dir: Option<PathBuf>,
+
+    /// Database URL (e.g. sqlite:./data.db, postgres://user:pass@host/db)
+    #[arg(long, env = "CINEMA_DATABASE_URL")]
+    database_url: Option<String>,
+
+    /// Path to config file
+    #[arg(short, long, default_value = "cinema.toml", env = "CINEMA_CONFIG")]
+    config: PathBuf,
+
+    /// Run in development mode
+    #[arg(long)]
+    dev: bool,
+}
+
+#[tokio::main]
+async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    match run().await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("Error: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn run() -> Result<()> {
+    // Raise the file descriptor limit for torrent peer connections + streaming
+    #[cfg(unix)]
+    {
+        use std::io::Error;
+        let mut rlim = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        unsafe {
+            libc::getrlimit(libc::RLIMIT_NOFILE, &mut rlim);
+        }
+        rlim.rlim_cur = rlim.rlim_max.min(10240);
+        if unsafe { libc::setrlimit(libc::RLIMIT_NOFILE, &rlim) } != 0 {
+            eprintln!(
+                "Warning: could not raise file descriptor limit: {}",
+                Error::last_os_error()
+            );
+        }
+    }
+
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .event_format(logging::CinemaFormatter)
+        .init();
+
+    let cli = Cli::parse();
+
+    let mut config = Config::from_file(&cli.config)?;
+    config.apply_env_overrides();
+
+    if let Some(host) = cli.host {
+        config.host = host;
+    }
+    if let Some(port) = cli.port {
+        config.port = port;
+    }
+    if let Some(data_dir) = cli.data_dir {
+        config.data_dir = data_dir;
+    }
+    if cli.database_url.is_some() {
+        config.database_url = cli.database_url;
+    }
+
+    let config = Arc::new(config);
+
+    // Initialize core services
+    let pool = app::create_pool(&config).await?;
+    let storage = app::create_storage(&config).await?;
+    let events = app::EventBus::new();
+    let http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    let ctx = AppContext {
+        db: pool,
+        storage,
+        config: config.clone(),
+        events,
+        http,
+    };
+
+    // Initialize torrent engine
+    torrent::TorrentEngine::init(&config, &ctx.storage, ctx.http.clone()).await?;
+
+    // Start download manager
+    let manager = downloads::DownloadManager::new(ctx.clone());
+    tokio::spawn(manager.run());
+
+    // HLS session cleanup reaper
+    tokio::spawn(async {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+            hls::cleanup_idle(120).await;
+        }
+    });
+
+    // Build router
+    let (api_router, api_spec) = routes::router().split_for_parts();
+    let mut router = Router::new();
+
+    // Mount API
+    info!("mounting api at /api");
+    router = router.nest("/api", api_router.with_state(ctx.clone()));
+
+    // Serve OpenAPI spec
+    let spec_json = serde_json::to_value(&api_spec).unwrap();
+    router = router.route(
+        "/api/openapi.json",
+        axum::routing::get(move || async move { axum::Json(spec_json.clone()) }),
+    );
+
+    // Frontend: dev proxy or static files
+    if cli.dev {
+        let dev_port = 5174u16;
+
+        // Kill any existing process on the dev port
+        if let Ok(out) = tokio::process::Command::new("lsof")
+            .args(["-ti", &format!(":{dev_port}")])
+            .output()
+            .await
+        {
+            let pids = String::from_utf8_lossy(&out.stdout);
+            for pid in pids.split_whitespace() {
+                let _ = tokio::process::Command::new("kill").arg(pid).output().await;
+            }
+            if !pids.is_empty() {
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
+        }
+
+        let frontend_dir = PathBuf::from("frontend");
+        if frontend_dir.join("package.json").exists() {
+            info!("starting vite dev server on port {dev_port}");
+            let _child = tokio::process::Command::new("bun")
+                .args(["run", "dev", "--", "--port", &dev_port.to_string(), "--strictPort"])
+                .current_dir(&frontend_dir)
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .kill_on_drop(true)
+                .spawn();
+        }
+
+        info!("proxying ui → http://localhost:{dev_port}");
+        let dev_proxy = proxy::DevProxy::new(dev_port);
+        router = router.fallback(move |req: axum::extract::Request| {
+            proxy::dev_proxy_handler(axum::extract::State(dev_proxy.clone()), req)
+        });
+    } else {
+        let build_dir = PathBuf::from("frontend/build");
+        if build_dir.exists() {
+            info!("mounting ui at /");
+            let fallback = ServeFile::new(build_dir.join("index.html"));
+            let service = ServeDir::new(&build_dir)
+                .append_index_html_on_directories(true)
+                .fallback(fallback);
+            router = router.fallback_service(service);
+        }
+    }
+
+    // Start server
+    let addr: SocketAddr = format!("{}:{}", config.host, config.port).parse()?;
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    info!("listening on http://{addr}");
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    // Shutdown
+    hls::stop_all().await;
+    torrent::TorrentEngine::get().shutdown().await;
+
+    Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    info!("shutdown signal received, draining connections...");
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn export_openapi_spec() {
+        let (_, spec) = super::routes::router().split_for_parts();
+        let json = serde_json::to_string_pretty(&spec).unwrap();
+        std::fs::write("frontend/openapi.json", &json).unwrap();
+        println!("Wrote OpenAPI spec to frontend/openapi.json");
+    }
+}

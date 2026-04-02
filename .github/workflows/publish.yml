@@ -6,7 +6,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: somfic/forge
+  IMAGE_NAME: somfic/cinema
 
 permissions:
   contents: write

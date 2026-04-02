@@ -1,0 +1,13 @@
+host = "127.0.0.1"
+port = 3000
+data_dir = "./data/"
+# database_url = "sqlite:./data/db/data.db?mode=rwc"
+# database_url = "postgres://user:password@localhost/cinema"
+# database_url = "mysql://user:password@localhost/cinema"
+
+tmdb_api_key = "your-tmdb-api-key"
+stream_sources = ["https://torrentio.strem.fun"]
+subtitle_languages = ["en"]
+max_concurrent_downloads = 2
+torrent_port = 6881
+use_dht = true

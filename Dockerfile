@@ -16,6 +16,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 COPY . .
 RUN bun install --cwd frontend --trust
+RUN bun run --cwd frontend build
 RUN cargo build --release
 
 FROM debian:bookworm-slim
